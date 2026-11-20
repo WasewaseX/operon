@@ -1,5 +1,17 @@
 # OPERON M100, PROCESS & GOVERNANCE LAYER (100-level program)
 
+> **SUPERSEDED — archived in place (2026-11-20, v2 design migration).**
+> The canonical active roadmap is now **[docs/design/NEXT.md](docs/design/NEXT.md)**
+> (Operon v2: one typed source, one typed MIR, Cranelift dev JIT, LLVM release,
+> JS frontend, cells + networks). This file and its W001–W100 queue no longer
+> drive new implementation decisions where they conflict with v2. Every W-item's
+> disposition (keep / modify / defer / retire) is recorded in
+> [docs/design/ROADMAP-MIGRATION.md](ROADMAP-MIGRATION.md). Per CONTRIBUTING.md
+> and the owner brief: history is preserved, nothing here is deleted, statuses
+> below remain the historical record, and the external board
+> (`project-vault/collab/ROADMAP-100.md`) is frozen as-of the migration commit —
+> the vault repo was out of scope for the migration edit.
+
 v1.1.0 · 2026-09-26 · owner directive: *"make a super detailed hundred level to do list ·
 you are dev 3 so build the 66-100 part · other 2 build the others · save EVERYTHING in the
 repo so we survive terrible environment resets"*

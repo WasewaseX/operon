@@ -17,6 +17,7 @@ pub mod interp;
 pub mod lexer;
 pub mod lint;
 pub mod ls;
+pub mod mir;
 pub mod num_exact;
 pub mod parser;
 pub mod pkg;
