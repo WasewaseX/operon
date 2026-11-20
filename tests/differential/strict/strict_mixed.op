@@ -1,0 +1,19 @@
+# S1 slice: the scalar layers working together. The loop state lives in
+# parameters (STRICT-CORE reading 1: `let` is immutable; parameters are the
+# assignment surface).
+fn pow2(n: Int, r: Int, i: Int) -> Int {
+  while i < n {
+    r = r * 2
+    i = i + 1
+  }
+  return r
+}
+fn main() {
+  promote(pow2(10, 1, 0))
+  promote(pow2(0, 1, 0))
+  let f: Float = 1.5
+  promote(f * 2.0)
+  let s: Str = "pow2(10) is above"
+  promote(s)
+  promote(pow2(3, 1, 0) == 8)
+}

@@ -123,9 +123,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=os.path.join(os.path.dirname(__file__), "..", "bin", "operon"))
     ap.add_argument("--root", default=os.path.join(os.path.dirname(__file__), ".."))
-    # compat-r2: run one lane alone (main = VM vs oracle, novm = tree-walk vs
-    # oracle). Default "both" is unchanged — the full differential contract.
-    ap.add_argument("--lane", choices=["both", "main", "novm"], default="both")
+    # compat-r2: run one lane alone (main = VM vs oracle, novm = tree-walk
+    # vs oracle). Default "both" is unchanged — the full differential
+    # contract. "mir" (V2-S1-B) is the S1 strict-core lane: strict-run vs
+    # the VM engine, skips recorded with their rejection reason.
+    ap.add_argument("--lane", choices=["both", "main", "novm", "mir"], default="both")
     args = ap.parse_args()
     root = os.path.abspath(args.root)
     binpath = os.path.abspath(args.bin)
@@ -279,6 +281,75 @@ def main():
                     print(f"    exit codes: tree={vm_code} oracle={py_code}")
                 vm_fail += 1
     print(f"tree-walk lane result: {vm_pass} match, {vm_fail} diverge")
+
+    # mir lane (V2-S1-B): the S1 corpus slice = every .op under
+    # tests/differential/ that parses + type-checks under STRICT-CORE §2.
+    # Non-members fail strict-run with exit 2 → SKIP with the reason; members
+    # must match the VM engine byte-for-byte on stdout AND exit code.
+    mir_pass, mir_fail, mir_skip = 0, 0, 0
+    if args.lane == "mir":
+        diff_dir = os.path.join(root, "tests", "differential")
+        mir_targets = []
+        for dirpath, dirnames, filenames in os.walk(diff_dir):
+            for fn in sorted(filenames):
+                if fn.endswith(".op"):
+                    mir_targets.append(os.path.join(dirpath, fn))
+        mir_targets.sort()
+        print(f"\nmir lane (strict core -> typed MIR -> reference interpreter vs the VM engine)")
+        for t in mir_targets:
+            rel = os.path.relpath(t, root)
+            try:
+                so, sc, se = run([binpath, "strict-run", t])
+            except subprocess.TimeoutExpired:
+                print(f"  TIMEOUT  {rel} (strict-run)")
+                mir_fail += 1
+                continue
+            if sc == 101:
+                # a Rust panic in the strict lane is a TOOLING bug, never a
+                # parity result — fail loudly
+                print(f"  FAIL     {rel} (strict-run panicked)")
+                mir_fail += 1
+                continue
+            if sc == 2:
+                # exit 2 = compile reject = not in the S1 slice
+                reason = se.strip().splitlines()[-1] if se.strip() else f"exit {sc}"
+                print(f"  SKIP     {rel} ({reason})")
+                mir_skip += 1
+                continue
+            try:
+                lo, lc, _ = run([binpath, "run", t])
+            except subprocess.TimeoutExpired:
+                print(f"  TIMEOUT  {rel} (rust, mir lane)")
+                mir_fail += 1
+                continue
+            if sc == 1 and lc != 0:
+                # both engines reject at runtime: membership is moot
+                print(f"  SKIP     {rel} (both engines reject at runtime)")
+                mir_skip += 1
+                continue
+            if so == lo and sc == lc:
+                print(f"  MATCH    {rel}")
+                mir_pass += 1
+            else:
+                print(f"  MIR-DIVERGE  {rel}")
+                mo = so.strip().splitlines()
+                lo2 = lo.strip().splitlines()
+                for i in range(max(len(mo), len(lo2))):
+                    m = mo[i] if i < len(mo) else "<missing>"
+                    l = lo2[i] if i < len(lo2) else "<missing>"
+                    if m != l:
+                        print(f"    mir   : {m}")
+                        print(f"    vm    : {l}")
+                if sc != lc:
+                    print(f"    exit codes: mir={sc} vm={lc}")
+                mir_fail += 1
+        print(
+            f"mir lane result: {mir_pass} MATCH, {mir_fail} diverge, "
+            f"{mir_skip} skipped (not in the S1 subset)"
+        )
+
+    if args.lane == "mir":
+        sys.exit(1 if mir_fail else 0)
     sys.exit(1 if (failed or vm_fail) else 0)
 
 if __name__ == "__main__":

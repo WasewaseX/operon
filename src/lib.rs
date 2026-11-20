@@ -24,6 +24,7 @@ pub mod pkg;
 pub mod pybridge;
 pub mod rna2;
 pub mod sched;
+pub mod strict;
 pub mod tools;
 pub mod typeck;
 pub mod types;

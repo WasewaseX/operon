@@ -1,0 +1,14 @@
+# S1 slice: recursion, accumulator style, call composition
+fn sum_to(n: Int) -> Int {
+  if n <= 0 { return 0 }
+  return n + sum_to(n - 1)
+}
+fn twice(x: Int) -> Int {
+  return x + x
+}
+fn main() {
+  promote(sum_to(100))
+  promote(twice(sum_to(10)))
+  promote(sum_to(0))
+  promote(twice(0))
+}

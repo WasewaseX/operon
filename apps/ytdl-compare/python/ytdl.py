@@ -94,10 +94,6 @@ def probe_tool(prog, flag):
         return "", str(e)
 
 
-def tool_line(prog, flag):
-    return probe_tool(prog, flag)[0]
-
-
 def detect_tools():
     tools = {}
     for key, prog, flag in (("ytdlp", "yt-dlp", "--version"),

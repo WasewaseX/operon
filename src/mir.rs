@@ -231,6 +231,12 @@ pub enum Instr {
         callee: FnId,
         args: Vec<Operand>,
     },
+    /// The S1 print surface: `promote(...)` lowers here (V2-S1-B). One
+    /// charged op; the rendered line lands in `Interp::out` with legacy
+    /// promote display parity. The S4 suspension family generalizes it.
+    Print {
+        args: Vec<Operand>,
+    },
 }
 
 /// Every block ends in exactly one terminator. Suspension points (brief
@@ -461,6 +467,21 @@ impl Module {
                     }
                 }
             }
+            Instr::Print { args } => {
+                for (i, a) in args.iter().enumerate() {
+                    let t = a
+                        .ty(&f.slot_tys)
+                        .ok_or_else(|| bad(format!("print arg {i} slot out of range")))?;
+                    if !matches!(
+                        t,
+                        MirType::Int | MirType::Float | MirType::Bool | MirType::Str
+                    ) {
+                        return Err(bad(format!(
+                            "print arg {i} is {t:?} — Unit is not printable"
+                        )));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -480,6 +501,9 @@ pub struct FnBuilder {
     blocks: Vec<Block>,
     cur_instrs: Vec<Instr>,
     cur_term: Option<Terminator>,
+    /// Closed blocks whose terminator is still the pending sentinel —
+    /// patch_term clears entries; finish() refuses to publish with any left.
+    pending_terms: Vec<BlockId>,
 }
 
 impl FnBuilder {
@@ -492,6 +516,7 @@ impl FnBuilder {
             blocks: Vec::new(),
             cur_instrs: Vec::new(),
             cur_term: None,
+            pending_terms: Vec::new(),
         }
     }
 
@@ -517,6 +542,34 @@ impl FnBuilder {
 
     pub fn copy(&mut self, dst: SlotId, src: SlotId) {
         self.cur_instrs.push(Instr::Copy { dst, src });
+    }
+
+    /// Emits the subset's one effect: the strict-core print (V2-S1-B). One
+    /// charged op at run time; the rendered line lands in `Interp::out`.
+    pub fn print(&mut self, args: Vec<Operand>) {
+        self.cur_instrs.push(Instr::Print { args });
+    }
+
+    /// Closes the current block WITHOUT requiring a terminator; the closed
+    /// block stays PENDING in `pending_terms` until patch_term sets it. The
+    /// strict lowering drives if/while shape with this: a forgotten patch
+    /// panics in finish() instead of publishing a corrupt module.
+    pub fn new_block_unterminated(&mut self) -> BlockId {
+        let term = self.cur_term.take();
+        let had_term = term.is_some();
+        let id = self.blocks.len() as BlockId;
+        let closed = Block {
+            instrs: std::mem::take(&mut self.cur_instrs),
+            // Jmp-to-self marks a pending slot: lowering-produced shapes never
+            // legitimately self-jump (branch targets are always other blocks),
+            // and the pending ledger forces patch_term before finish().
+            term: term.unwrap_or(Terminator::Jmp { target: id }),
+        };
+        self.blocks.push(closed);
+        if !had_term {
+            self.pending_terms.push(id);
+        }
+        self.blocks.len() as BlockId
     }
 
     pub fn bin(
@@ -583,6 +636,19 @@ impl FnBuilder {
         self.blocks.len() as BlockId
     }
 
+    /// Overwrites the terminator of an already-closed block. The strict-core
+    /// lowering pass (src/strict.rs, V2-S1-B) needs this for forward joins:
+    /// an if-arm's fall-through block is closed before the join block it
+    /// must jump to exists. Patching also clears the block's pending status.
+    pub fn patch_term(&mut self, block: BlockId, term: Terminator) {
+        let b = self
+            .blocks
+            .get_mut(block as usize)
+            .unwrap_or_else(|| panic!("patch_term: block {block} not yet closed"));
+        b.term = term;
+        self.pending_terms.retain(|&p| p != block);
+    }
+
     pub fn ret(&mut self, val: Option<Operand>) {
         self.cur_term = Some(Terminator::Ret { val });
     }
@@ -600,6 +666,11 @@ impl FnBuilder {
     }
 
     pub fn finish(mut self) -> MirFn {
+        assert!(
+            self.pending_terms.is_empty(),
+            "lowering bug: block(s) {:?} never got their terminator (patch_term) before finish",
+            self.pending_terms
+        );
         if !self.cur_instrs.is_empty() || self.cur_term.is_some() {
             self.blocks.push(Block {
                 instrs: std::mem::take(&mut self.cur_instrs),
@@ -715,11 +786,18 @@ pub struct Interp {
     /// always charges a budget).
     pub fuel: u64,
     charged: u64,
+    /// Printed lines (the `Print` sink): buffered so the differential lane
+    /// compares them byte-for-byte regardless of process plumbing.
+    pub out: Vec<String>,
 }
 
 impl Interp {
     pub fn with_fuel(fuel: u64) -> Interp {
-        Interp { fuel, charged: 0 }
+        Interp {
+            fuel,
+            charged: 0,
+            out: Vec::new(),
+        }
     }
 
     /// Ops charged so far (the portable cost unit: one MIR instruction).
@@ -830,6 +908,22 @@ impl Interp {
                             stack[n - 2].ip += 1;
                         }
                         continue;
+                    }
+                    Instr::Print { args } => {
+                        let line = {
+                            let fr = stack.last().expect("frame present");
+                            let parts = args
+                                .iter()
+                                .map(|a| {
+                                    read_operand(fr, a.clone())
+                                        .map(|v| format_mir_value(&v))
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            parts.join(" ")
+                        };
+                        self.out.push(line);
+                        let fr = stack.last_mut().expect("frame present");
+                        fr.ip += 1;
                     }
                 }
                 continue;
@@ -997,6 +1091,23 @@ fn const_to_value(c: Const) -> Value {
         Const::Bool(v) => Value::Bool(v),
         Const::Str(v) => Value::Str(v),
         Const::Unit => Value::Unit,
+    }
+}
+
+/// Display-format parity with the legacy engine's promote builtin
+/// (src/value.rs `Value::display`: strings raw, everything else repr).
+/// Floats go through the SAME formatter (`crate::value::format_float`), so
+/// the S1 differential lane compares identical bytes, not similar ones.
+fn format_mir_value(v: &Value) -> String {
+    match v {
+        Value::Str(s) => s.clone(),
+        Value::Int(i) => i.to_string(),
+        Value::Bool(true) => "true".into(),
+        Value::Bool(false) => "false".into(),
+        Value::Float(f) => crate::value::format_float(*f),
+        // Unreachable through validate() (Print rejects Unit operands);
+        // kept so the match stays total if the checker is ever bypassed.
+        Value::Unit => "unit".into(),
     }
 }
 

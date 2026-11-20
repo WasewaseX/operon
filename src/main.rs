@@ -102,6 +102,17 @@ fn real_main() {
     if cmd == "registry" {
         pkg::registry_command(rest);
     }
+    // V2-S1-B (docs/design/NEXT.md): the S1 strict-core lane. Its own
+    // command (not a `run` flag) because its surface is deliberately
+    // different: no genes, no repair ladder, no cells — source in, typed
+    // MIR out, the reference interpreter runs it, promote lines print.
+    if cmd == "strict-run" {
+        operon::strict::strict_run_command(rest);
+        // the command always exits internally; the return here is the
+        // belt-and-braces guard that nothing falls through to the generic
+        // flag parser with a strict-run argv
+        return;
+    }
     match cmd.as_str() {
         "init" | "add" | "remove" | "update" | "install" | "tree" | "verify" | "publish"
         | "search" => {

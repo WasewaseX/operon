@@ -1,0 +1,13 @@
+# S1 slice: strings — raw display, escapes, ordering, equality
+fn main() {
+  promote("raw str")
+  promote("with \"quotes\"")
+  promote("a" < "b")
+  promote("b" < "a")
+  promote("same" == "same")
+  promote("x" != "y")
+  promote("")
+  if "abc" < "abd" {
+    promote("ordered")
+  }
+}

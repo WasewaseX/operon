@@ -1,0 +1,14 @@
+# S1 slice: float arithmetic and formatting (format_float parity is the
+# point: shortest positional form inside [-4, 16) exponent, else e-notation)
+fn main() {
+  promote(2.5)
+  promote(0.1)
+  promote(1e20)
+  promote(123456789.0)
+  promote(3.0 / 2.0)
+  promote(2.5 * 2.0)
+  promote(1.5 + 2.25)
+  promote(-0.5)
+  promote(2.0 < 3.0)
+  promote(3.0 == 3.0)
+}

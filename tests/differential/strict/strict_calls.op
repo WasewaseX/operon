@@ -1,0 +1,17 @@
+# S1 slice: direct calls only — arg order, composition, multi-arg promote
+fn add(a: Int, b: Int) -> Int {
+  return a + b
+}
+fn mul3(x: Int) -> Int {
+  return x * 3
+}
+fn nine() -> Int {
+  return 9
+}
+fn main() {
+  promote(add(2, 40))
+  promote(mul3(nine()))
+  promote(add(mul3(2), 1))
+  promote(nine(), nine())
+  promote(mul3(1), add(1, 1), 3)
+}

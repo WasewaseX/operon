@@ -1,4 +1,4 @@
-# STRICT-CORE — the S1 subset spec (V2-S1-A)
+# STRICT-CORE: the S1 subset spec (V2-S1-A)
 
 **Status:** SPEC section for S1 (task V2-S1-A of
 [docs/design/NEXT.md](NEXT.md)). This file defines the subset of Operon
@@ -31,7 +31,7 @@ its replacement and regression coverage exist (NEXT.md §5).
 ## 2. The grammar slice
 
 The strict core accepts exactly these productions. Everything else is
-rejected at parse time with a diagnostic (never repaired at runtime —
+rejected at parse time with a diagnostic (never repaired at runtime -
 the Total Grammar repair ladder becomes `operon fix` / LSP quick-fixes
 in the tooling lane, per NEXT.md §5 S1→S2).
 
@@ -72,7 +72,7 @@ expr_stmt   := expr
 
 - `let` is **typed** and immutable: no re-assignment of a `let` name
   (a future `mut` marker, if the corpus parity work demands it, is a
-  spec amendment — not a silent relaxation).
+  spec amendment: not a silent relaxation).
 - `if` and `while` conditions must type as `Bool`. No truthiness
   coercion: `if x` where `x: Int` is a type error, not a runtime
   convention.
@@ -102,11 +102,11 @@ call_expr   := IDENT "(" args? ")"
   equality) is a legacy-lane semantic and is rejected in the strict core
   with an "explicit conversion" diagnostic. An explicit numeric
   conversion function (`int_to_float`) arrives with S1-B's lowering if
-  the corpus slice requires it — added as a named primitive, never as
+  the corpus slice requires it: added as a named primitive, never as
   an implicit coercion.
 - Strings are immutable values; the S1 slice has concatenation via the
   std primitive surface (`str_concat`) only if the corpus slice uses it
-  — string *interpolation* stays legacy-lane until the typed AST grows
+ : string *interpolation* stays legacy-lane until the typed AST grows
   it deliberately.
 - Direct calls only (`Instr::Call`, callee = `FnId`): first-class
   functions, closures and function pointers are out of the subset (they
@@ -123,7 +123,7 @@ type := "Int" | "Float" | "Bool" | "Str" | "Unit"
 ```
 
 - Layer **S1-Core-0** (the first S1 parity lane) is the scalar slice:
-  `Int | Float | Bool | Str | Unit` — exactly today's `MirType`, zero
+  `Int | Float | Bool | Str | Unit`: exactly today's `MirType`, zero
   MIR growth, lowering is mechanical.
 - Layer **S1-Core-1** grows `MirType` with `List(elem)` / `Option(inner)`
   / `Result(ok, err)` (the growth `src/mir.rs` §types comment anticipates:
@@ -142,7 +142,7 @@ type := "Int" | "Float" | "Bool" | "Str" | "Unit"
   (`from(param)`, returned iterators, view rules) enter the strict core
   only after the S0 view-exercise evidence
   ([VIEW-EXERCISE.md](VIEW-EXERCISE.md)) is re-validated on the lowered
-  path — they are spec-gated, not spec-promised.
+  path: they are spec-gated, not spec-promised.
 
 ### 2.5 Out of the subset (explicit non-goals for S1)
 
@@ -155,12 +155,12 @@ numeric equality · `Any`.
 
 Each item above is a *deferred v2 feature with a planned home* (NEXT.md
 §6, S3–S5) or a *legacy-lane behavior that the strict core deliberately
-refuses* — the difference is recorded here so "not yet" cannot drift
+refuses*: the difference is recorded here so "not yet" cannot drift
 into "accidentally forever".
 
 ## 3. The typed AST slice
 
-The strict parser produces a typed AST — every binding carries its
+The strict parser produces a typed AST: every binding carries its
 `MirType` (or a type error), every expression is annotated bottom-up,
 and no node exists that cannot lower to a `src/mir.rs` instruction
 family:
@@ -179,9 +179,9 @@ family:
 | literal | `LoadConst{val: Const}` |
 
 Slot discipline: one frame slot per binding (`slot_tys` indexed by
-slot id, params first — the S0 `MirFn` layout). The AST→slot assignment
+slot id, params first: the S0 `MirFn` layout). The AST→slot assignment
 is deterministic (declaration order), so the same program lowers
-byte-identically on every run — a precondition for the differential
+byte-identically on every run: a precondition for the differential
 lane's "same input, same MIR" check.
 
 ## 4. Rejection rules (diagnostics, never repair)
@@ -205,7 +205,7 @@ golden diagnostic test:
 
 These are compile-time diagnostics in the strict lane. The Total
 Grammar repair machinery stays untouched on the legacy lane and gains
-its `operon fix` / LSP surface in the S1→S2 migration (NEXT.md §5) —
+its `operon fix` / LSP surface in the S1→S2 migration (NEXT.md §5) -
 the repair code is *tooling* from S1 onward, never silent runtime
 semantics of the compiled path.
 

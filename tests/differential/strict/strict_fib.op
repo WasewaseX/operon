@@ -1,0 +1,16 @@
+# differential/strict — S1 corpus slice (V2-S1-B, STRICT-CORE §5)
+# This file is in the strict-core subset: it parses under the strict grammar,
+# type-checks under the §2 rules, and runs on BOTH the legacy engine (fn is a
+# legacy synonym, typed lets parse) and the MIR lane (operon strict-run).
+# Int `/` and `%` are deliberately absent: legacy uses Python-style division,
+# the v2 MIR uses checked 64-bit truncation (STRICT-CORE reading 4).
+fn fib(n: Int) -> Int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+fn main() {
+  promote(fib(10))
+  promote(fib(20))
+  promote(fib(1))
+  promote(fib(0))
+}

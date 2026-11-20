@@ -1,0 +1,21 @@
+# S1 slice: while loops over assignable parameters (STRICT-CORE reading 1:
+# `let` is immutable, parameters are the assignment surface)
+fn count_down(n: Int) -> Int {
+  while n > 0 {
+    n = n - 1
+  }
+  return n
+}
+fn sum_params(n: Int, i: Int, acc: Int) -> Int {
+  while i <= n {
+    acc = acc + i
+    i = i + 1
+  }
+  return acc
+}
+fn main() {
+  promote(count_down(9))
+  promote(count_down(0))
+  promote(sum_params(100, 1, 0))
+  promote(sum_params(5, 1, 0))
+}

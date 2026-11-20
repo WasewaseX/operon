@@ -1,16 +1,6 @@
 /**
- * lib.ts — shared core of the Deno/TypeScript ytdl comparison build.
- *
- * Split out of ytdl.ts (2026-11-21) to keep every file under the
- * complexity/file-too-large line limit (400): this module owns the pure
- * decision core — types, formatting, engine probes, selector logic, the
- * format table, the download loop and the option layer. The CLI commands,
- * the deep-bench workloads and the entry dispatch live in ytdl.ts, which
- * imports everything it needs from here.
- *
- * The decision logic must stay IDENTICAL to apps/ytdl/ytdl.op and the
- * Python build (differential-pinned): moving code between files must not
- * change any byte of printed output.
+ * lib.ts: the pure decision core of the Deno/TypeScript ytdl build; the CLI
+ * and dispatch live in ytdl.ts. Decision logic stays differential-pinned.
  */
 
 export const TIERS = ["2160", "1440", "1080", "720", "480", "360", "240", "144"];
@@ -313,15 +303,6 @@ export async function download(url: string, o: Opts) {
   return { ok, attempts, r: last };
 }
 
-export function report(d: { ok: boolean; attempts: number; r: RunResult }) {
-  for (const ln of destLines(d.r.stdout, d.r.stderr)) console.log(`  ${ln}`);
-  console.log(`  attempts: ${d.attempts}  result: ${d.ok ? "ok" : "FAIL"}`);
-  if (!d.ok) {
-    console.log(d.r.code !== 0 ? `  yt-dlp exited ${d.r.code}:` : `  incomplete after ${d.attempts} rounds:`);
-    console.log(tailLines(d.r.stderr, 4));
-  }
-}
-
 // ---------------------------------------------------------- option layer
 
 export function getOpts(rest: string[]): Opts {
@@ -364,7 +345,3 @@ export function getOpts(rest: string[]): Opts {
   return o;
 }
 
-export function die(msg: string, code = 2): never {
-  console.log(msg);
-  Deno.exit(code);
-}

@@ -1,10 +1,8 @@
 #![no_main]
-// z-fuzz-libfuzzer (#49): in-process coverage-guided target for the parser.
-// lib.rs's module tree backs this crate; parse() is the exact entry the CLI
-// uses. Panics/aborts here are real parser bugs the black-box lane could
-// only find by luck (the C1 Span::of_token_word multibyte panic class).
-// Seeds: tests/ + examples/ via the corpus dir (cargo fuzz runs -merge with
-// the seed corpus once, then the nightly job explores).
+// z-fuzz-libfuzzer (#49): in-process coverage-guided parser target; parse()
+// is the exact entry the CLI uses, so a panic here is a real parser bug.
+// Seeds: tests/ + examples/ via the corpus dir (cargo fuzz -merge once,
+// then the nightly job explores).
 
 use libfuzzer_sys::fuzz_target;
 

@@ -1,0 +1,14 @@
+# S1 slice: integer arithmetic pins — precedence, associativity, unary minus.
+# NO Int / or % (legacy Python-style vs v2 checked-truncating semantics —
+# recorded exclusion, see STRICT-CORE reading 4).
+fn main() {
+  promote(2 + 3 * 4)
+  promote((2 + 3) * 4)
+  promote(10 - 3 - 4)
+  promote(2 * 3 * 4)
+  promote(-2 * 3)
+  promote(-(2 + 3))
+  promote(0 - 7)
+  promote(7 * 0)
+  promote(1000000 * 1000000)
+}

@@ -22,14 +22,13 @@ import {
   Opts,
   RunResult,
   TIERS,
+  destLines,
   detectTools,
-  die,
   download,
   getOpts,
   hOf,
   infoLines,
   mget,
-  report,
   runProg,
   selectionArgs,
   tableRows,
@@ -37,6 +36,23 @@ import {
   tOf,
   toolLine,
 } from "./lib.ts";
+
+// CLI-side output helpers: the lib module stays free of console output so
+// its only effect surface is the caller's stdout.
+
+function report(d: { ok: boolean; attempts: number; r: RunResult }) {
+  for (const ln of destLines(d.r.stdout, d.r.stderr)) console.log(`  ${ln}`);
+  console.log(`  attempts: ${d.attempts}  result: ${d.ok ? "ok" : "FAIL"}`);
+  if (!d.ok) {
+    console.log(d.r.code !== 0 ? `  yt-dlp exited ${d.r.code}:` : `  incomplete after ${d.attempts} rounds:`);
+    console.log(tailLines(d.r.stderr, 4));
+  }
+}
+
+function die(msg: string, code = 2): never {
+  console.log(msg);
+  Deno.exit(code);
+}
 
 // ---------------------------------------------------------- commands
 

@@ -365,10 +365,9 @@ def main():
                         finding_row = None  # fully persisted: .op + manifest row
                 except OSError as e:
                     # a write-integrity finding that cannot be persisted is a
-                    # REAL data loss for triage — never a silent drop: the loss
-                    # is counted in the run stats and what the leg already knows
-                    # is rescued to a sidecar file; if even the rescue fails the
-                    # run aborts (the #113 corpus invariant outranks uptime)
+                    # REAL data loss for triage — never a silent drop: count it
+                    # in the run stats and rescue the row to a sidecar file; a
+                    # rescue failure propagates (the #113 invariant outranks uptime)
                     stats["findings-lost-io"] = stats.get("findings-lost-io", 0) + 1
                     rescue_row = finding_row if finding_row is not None else {
                         "kind": "write-integrity",
@@ -379,14 +378,11 @@ def main():
                         "detail": f"leg aborted before a finding row existed: {e}",
                     }
                     rescue = f"{manifest}.rescue-{args.seed}-{execs}.json"
-                    try:
-                        with open(rescue, "w", encoding="utf-8") as rfh:
-                            rfh.write(json.dumps(rescue_row))
-                        print(f"fuzz warning: write-integrity record failed ({e}); "
-                              f"partial row rescued to {os.path.relpath(rescue, ROOT)}",
-                              file=sys.stderr)
-                    except OSError:
-                        raise
+                    with open(rescue, "w", encoding="utf-8") as rfh:
+                        rfh.write(json.dumps(rescue_row))
+                    print(f"fuzz warning: write-integrity record failed ({e}); "
+                          f"partial row rescued to {os.path.relpath(rescue, ROOT)}",
+                          file=sys.stderr)
             if kind in ("crash", "hang"):
                 h = hashlib.sha256(mut).hexdigest()
                 if h in seen_hashes:

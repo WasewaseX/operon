@@ -1,0 +1,23 @@
+# S1 slice: Bool pins. NOTE: the STRICT-CORE §2.3 grammar has no &&/||
+# productions (logic ops arrive with a spec amendment, not silently), so
+# conjunction/disjunction is spelled with nested ifs here.
+fn main() {
+  promote(true)
+  promote(false)
+  promote(!true)
+  promote(!(1 == 2))
+  promote(1 < 2)
+  promote(2 <= 2)
+  promote(2 >= 3)
+  promote(7 != 8)
+  promote(3 == 3)
+  if 1 < 2 {
+    if 2 < 3 {
+      promote("chain-ok")
+    } else {
+      promote("chain-bad")
+    }
+  } else {
+    promote("chain-bad")
+  }
+}
