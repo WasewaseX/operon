@@ -2,6 +2,13 @@
 
 **The gene-expression language.** A Total Grammar language where nothing you write is ever rejected, it wobbles, repairs, and runs, implemented on a native Rust core with a small C++ codon kernel (bit-parallel Myers distance) for the hottest algorithms, and verified by a Python oracle + differential harness that never ships in the binary.
 
+> **Direction change (2026-11-20):** the v2 design brief is now the
+> authoritative architecture — one typed source, one typed MIR, Cranelift
+> dev JIT, LLVM release, JavaScript frontend, cells + networks. The
+> canonical active plan is [docs/design/NEXT.md](docs/design/NEXT.md);
+> `TODO-100.md` is superseded (archived in place). The v1 Total Grammar
+> story below remains the shipped v2.11 behavior until v2 stages land.
+
 ```operon
 gene greet(name) {
     return "hello, {name}!"

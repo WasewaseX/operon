@@ -13,3 +13,6 @@ examples/embed/target/
 /build/
 /bin/
 super_rs
+
+# V2-S0: standalone native-jit prototype (own workspace/lockfile/target)
+examples/native-jit/target/
