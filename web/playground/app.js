@@ -22,7 +22,6 @@ const KEYWORDS = [
   "apply", "true", "false", "null", "and", "or", "not", "collect", "ires",
 ];
 const KEYWORD_SET = new Set(KEYWORDS);
-const MARKS = ["@acetylate", "@methylate", "@m6a"];
 
 // rung 2: word synonyms → canonical keyword (print/echo/say/show map to the
 // promote builtin; the parser resolves the name, so the target is "promote").
@@ -71,7 +70,7 @@ function editDistance(a, b) {
   const m = a.length, n = b.length;
   if (m === 0) return n;
   if (n === 0) return m;
-  let prev = new Array(n + 1), cur = new Array(n + 1);
+  let prev = Array.from({ length: n + 1 }, () => 0), cur = Array.from({ length: n + 1 }, () => 0);
   for (let j = 0; j <= n; j++) prev[j] = j;
   for (let i = 1; i <= m; i++) {
     cur[0] = i;
@@ -783,7 +782,7 @@ class Parser {
         const ast = sub.parseExpr();
         if (sub.peek().t !== "eof") sub.note(4, "trailing tokens in interpolation — ignored");
         out.push({ ast, line });
-      } catch (e) {
+      } catch {
         note(this.ctx, 4, "bad interpolation '{" + p.expr + "}' — kept literal", line);
         out.push({ txt: "{" + p.expr + "}" });
       }
@@ -1197,7 +1196,7 @@ function callMethod(ctx, obj, name, args, line) {
 }
 
 // Python-style slice with negatives, clamped.
-function sliceOf(seq, a, b, ctx, line) {
+function sliceOf(seq, a, b, _ctx, _line) {
   const n = seq.length;
   const norm = (x, dflt) => {
     if (typeof x !== "number") return dflt;
@@ -1363,7 +1362,7 @@ function execStmt(st, env, ctx) {
 
 /* ------------------------------- builtins ---------------------------------- */
 
-function makeGlobalEnv(ctx) {
+function makeGlobalEnv(_ctx) {
   const env = new Env(null);
   const def = (name, fn) => env.vars.set(name, { __native: true, name, fn });
   const one = (args) => (args.length >= 1 ? args[0] : null);
@@ -1443,7 +1442,7 @@ function makeGlobalEnv(ctx) {
       note(c, 0, "unfolded: chr needs an int code point — null returned", ln);
       return null;
     }
-    try { return String.fromCodePoint(v); } catch (e) { note(c, 0, "unfolded: chr code point invalid — null returned", ln); return null; }
+    try { return String.fromCodePoint(v); } catch { note(c, 0, "unfolded: chr code point invalid — null returned", ln); return null; }
   });
   def("json_parse", (args, c, ln) => {
     const s = one(args);
@@ -1458,7 +1457,7 @@ function makeGlobalEnv(ctx) {
         return m;
       };
       return conv(JSON.parse(s));
-    } catch (e) {
+    } catch {
       note(c, 0, "unfolded: invalid JSON — null returned", ln);
       return null;
     }
@@ -1545,7 +1544,7 @@ function makeGlobalEnv(ctx) {
     return flt(t / 1000);
   });
   def("distance", (args) => editDistance(str(one(args)), str(args.length >= 2 ? args[1] : "")));
-  def("codon", (args, c, ln) => {
+  def("codon", (args, _c, _ln) => {
     const s = str(one(args));
     let score = 100;
     if (s.length > 24) score -= 4 * (s.length - 24);

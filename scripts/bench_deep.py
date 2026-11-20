@@ -313,16 +313,23 @@ def main():
     for impl in active:
         spec = IMPLS[impl]
         rt = size_of(spec["runtime"])
+        rt_real = os.path.realpath(spec["runtime"])
+        rt_from = "binary"
         try:
-            rt_real = os.path.realpath(spec["runtime"])
             if os.path.isfile(rt_real):
                 rt = os.stat(rt_real).st_size
+            else:
+                rt_from = "source (binary missing)"
         except OSError as e:
-            # stat of the raw source stands in when the binary is missing
+            # source size stands in when the binary cannot be stat'd — the
+            # row records that provenance so the report never mixes binary
+            # and source bytes without saying so
+            rt_from = "source (stat failed)"
             print(f"warning: cannot stat {rt_real}: {e}", file=sys.stderr)
         src = size_of(spec["source"])
         st[impl] = {
             "runtime_bytes": rt,
+            "runtime_bytes_from": rt_from,
             "source_bytes": src,
             "loc": loc_of(spec["source"]),
             "runtime_plus_source": rt + src,

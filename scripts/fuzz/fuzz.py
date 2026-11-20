@@ -320,6 +320,7 @@ def main():
             # fmt --write on the COPY, hash again — a non-zero exit must
             # leave the bytes identical (a zero exit may rewrite freely)
             if execs % 4 == 0:
+                finding_row = None
                 try:
                     import shutil
                     with open(WRITETMP, "wb") as wfh:
@@ -346,25 +347,46 @@ def main():
                         unique_findings += 1
                         name = f"write_integrity_{args.seed}_{execs}.op"
                         path2 = os.path.join(args.corpus_dir, name)
+                        row = {
+                            "kind": "write-integrity",
+                            "input": os.path.relpath(path2, ROOT),
+                            "bytes": len(mut),
+                            "seed": args.seed,
+                            "exec": execs,
+                            "argv": ["fmt", "<copy>", "--write"],
+                            "exit_code": wrc,
+                            "detail": f"rc!=0 but bytes changed: {before[:12]} -> {after[:12]}",
+                        }
+                        finding_row = row
                         with open(path2, "wb") as wfh:
                             wfh.write(mut)
                         with open(manifest, "a", encoding="utf-8") as wfh:
-                            wfh.write(json.dumps({
-                                "kind": "write-integrity",
-                                "input": os.path.relpath(path2, ROOT),
-                                "bytes": len(mut),
-                                "seed": args.seed,
-                                "exec": execs,
-                                "argv": ["fmt", "<copy>", "--write"],
-                                "exit_code": wrc,
-                                "detail": f"rc!=0 but bytes changed: {before[:12]} -> {after[:12]}",
-                            }))
+                            wfh.write(json.dumps(row))
+                        finding_row = None  # fully persisted: .op + manifest row
                 except OSError as e:
                     # a write-integrity finding that cannot be persisted is a
-                    # REAL data loss for triage — say so loudly, never drop it
-                    print(f"fuzz warning: could not record write-integrity "
-                          f"finding ({e}); the affected input is NOT in the "
-                          f"corpus", file=sys.stderr)
+                    # REAL data loss for triage — never a silent drop: the loss
+                    # is counted in the run stats and what the leg already knows
+                    # is rescued to a sidecar file; if even the rescue fails the
+                    # run aborts (the #113 corpus invariant outranks uptime)
+                    stats["findings-lost-io"] = stats.get("findings-lost-io", 0) + 1
+                    rescue_row = finding_row if finding_row is not None else {
+                        "kind": "write-integrity",
+                        "input": None,
+                        "seed": args.seed,
+                        "exec": execs,
+                        "argv": ["fmt", "<copy>", "--write"],
+                        "detail": f"leg aborted before a finding row existed: {e}",
+                    }
+                    rescue = f"{manifest}.rescue-{args.seed}-{execs}.json"
+                    try:
+                        with open(rescue, "w", encoding="utf-8") as rfh:
+                            rfh.write(json.dumps(rescue_row))
+                        print(f"fuzz warning: write-integrity record failed ({e}); "
+                              f"partial row rescued to {os.path.relpath(rescue, ROOT)}",
+                              file=sys.stderr)
+                    except OSError:
+                        raise
             if kind in ("crash", "hang"):
                 h = hashlib.sha256(mut).hexdigest()
                 if h in seen_hashes:
@@ -424,6 +446,9 @@ def main():
     print(f"\nfuzz done: {execs} exec(s) in {elapsed:.0f}s, seed {args.seed}")
     print(f"  clean={stats['clean']}  contained={stats['contained']}  "
           f"crash={stats['crash']}  hang={stats['hang']}")
+    if stats.get("findings-lost-io", 0):
+        print(f"  findings-lost-io={stats['findings-lost-io']}  "
+              "(rescued to sidecar files; triage those before trusting the corpus)")
     # z-fuzz-dedupe (#48): persist new signatures (deterministic JSON,
     # sorted keys) and report the dedupe counts.
     if new_sigs:

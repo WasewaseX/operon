@@ -31,6 +31,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INTERP = os.path.join(ROOT, "src", "interp.rs")
 
+# Set by tracked_op_files() when git is unavailable and the filesystem walk
+# took over; main() prints the note into the audit summary so a corpus whose
+# composition changed because of the fallback cannot pass silently.
+CORPUS_WALK_NOTE = None
+
 REGISTRY_RE = re.compile(
     r"pub\s+const\s+BUILTIN_NAMES\s*:\s*&\[&str\]\s*=\s*&\[(.*?)\];", re.S)
 SYNONYM_RE = re.compile(
@@ -62,9 +67,12 @@ def tracked_op_files():
         if files:
             return sorted(f for f in files if os.sep + "redteam" + os.sep not in f)
     except Exception as e:
-        # designed fallback: walk the tree when git is absent/failing, but
-        # say so — a silently shrunken corpus would hide scope from the audit
-        print(f"warning: git ls-files unavailable ({e}); walking the tree", file=sys.stderr)
+        # designed fallback: walk the tree when git is absent/failing, but the
+        # audit report carries the reason — a silently shrunken corpus would
+        # hide scope from the audit
+        global CORPUS_WALK_NOTE
+        CORPUS_WALK_NOTE = f"git ls-files unavailable ({type(e).__name__}: {e}) — corpus walked from the filesystem"
+        print(f"warning: {CORPUS_WALK_NOTE}", file=sys.stderr)
     out = []
     for base in ("tests", "apps"):
         d = os.path.join(ROOT, base)
@@ -141,6 +149,8 @@ def main():
 
     print(f"audit_builtins: {len(builtins)} registry builtins "
           f"({len(synonyms)//2} synonyms) · corpus {len(files)} tracked .op files")
+    if CORPUS_WALK_NOTE:
+        print(f"audit_builtins: NOTE — {CORPUS_WALK_NOTE}")
     if dups:
         print(f"audit_builtins: REGISTRY DUPLICATES: {', '.join(dups)}")
     if gaps:

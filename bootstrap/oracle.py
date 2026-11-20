@@ -377,7 +377,7 @@ class SeqObj:
                     if i < len(self.args):
                         fenv[pname] = self.args[i]
                     elif dflt is not None:
-                        fenv[pname] = self.interp.eval(fenv, dflt)
+                        fenv[pname] = self.interp.eval_expr(fenv, dflt)
                     else:
                         fenv[pname] = None
                 try:
@@ -4222,7 +4222,7 @@ class Interp:
         """Mirror of the Rust pattern-literal eval: `?!` propagation is a
         return (never contained); any other stress becomes a note + null."""
         try:
-            return self.eval(env, l)
+            return self.eval_expr(env, l)
         except Stress as st:
             if st.prop is not None:
                 raise
@@ -4308,7 +4308,7 @@ class Interp:
             gev = self.new_scope(env)
             gev.update(bindings)
             try:
-                return truthy(self.eval(gev, cond))
+                return truthy(self.eval_expr(gev, cond))
             except Stress as st:
                 if st.prop is not None:
                     raise  # W06: propagation is a return, never a failure
@@ -4332,14 +4332,14 @@ class Interp:
         elif k == "const":
             # W05: immutable binding, deep-freeze + const name marker.
             _, name, ex = s
-            v = self.eval(env, ex)
+            v = self.eval_expr(env, ex)
             if name in env:
                 self.note(4, f"rebinding '{name}'")
             self.deep_freeze(v)
             env[name] = v
             env[("__const__", name)] = True
         elif k == "let":
-            v = self.eval(env, s[2])
+            v = self.eval_expr(env, s[2])
             if s[1] in env:
                 self.note(4, f"rebinding '{s[1]}'")
             env[s[1]] = v
@@ -4347,7 +4347,7 @@ class Interp:
             # W01 (L2c): annotated definition, mismatch = catchable unfolded
             # Stress; the binding does NOT happen (mirror of interp.rs).
             _, name, ann, ex = s
-            v = self.eval(env, ex)
+            v = self.eval_expr(env, ex)
             if not ann_matches(v, ann):
                 raise Stress("unfolded", f"type annotation violated: '{name}' expects {ann_render(ann)}, got {type_name(v)}")
             if name in env:
@@ -4355,12 +4355,12 @@ class Interp:
             env[name] = v
         elif k == "letpat":
             # L1a: destructuring definition
-            v = self.eval(env, s[2])
+            v = self.eval_expr(env, s[2])
             self.bind_pattern(env, s[1], v)
         elif k == "forpat":
             # L1a: destructuring loop
             _, pat, it, body = s
-            itv = self.eval(env, it)
+            itv = self.eval_expr(env, it)
             if isinstance(itv, SeqObj):
                 while True:
                     self.tick()
@@ -4412,7 +4412,7 @@ class Interp:
                 for t in targets:
                     if t[0] == "ident" and self.is_const(env, t[1]):
                         raise Stress("frozen", f"cannot reassign const '{t[1]}'")
-            vals = [self.eval(env, v) for v in values]
+            vals = [self.eval_expr(env, v) for v in values]
             if len(vals) < len(targets):
                 self.note(4, "multi-assign: fewer values than targets; the rest bind null")
             elif len(vals) > len(targets):
@@ -4436,8 +4436,8 @@ class Interp:
                         self.assign(env, name, val)
                     elif t[0] == "index":
                         self.cur_line = t[3] if len(t) > 3 else 0  # W07 mirror: assign-target stamp
-                        tv = self.eval(env, t[1])
-                        iv = self.eval(env, t[2])
+                        tv = self.eval_expr(env, t[1])
+                        iv = self.eval_expr(env, t[2])
                         if isinstance(tv, list):
                             if self.is_frozen(tv):
                                 raise self._frozen_stress("list")
@@ -4458,7 +4458,7 @@ class Interp:
                         else:
                             self.note(4, "index assignment on non-container ignored")
                     elif t[0] == "member":
-                        tv = self.eval(env, t[1])
+                        tv = self.eval_expr(env, t[1])
                         if isinstance(tv, ObjInst):
                             tv.fields[t[2]] = val
                         elif isinstance(tv, dict):
@@ -4471,7 +4471,7 @@ class Interp:
                         self.note(4, "multi-assign target invalid; value dropped")
         elif k == "assign":
             _, name, op, ve = s
-            v = self.eval(env, ve)
+            v = self.eval_expr(env, ve)
             if self.is_const(env, name):
                 raise Stress("frozen", f"cannot reassign const '{name}'")
             target = self.find_env(env, name)
@@ -4490,9 +4490,9 @@ class Interp:
             # the stale carryover line the engine renders (nothing else in
             # the statement consumes cur_line) — removed; the full
             # differential corpus proves the removal inert.
-            tv = self.eval(env, te)
-            iv = self.eval(env, ie)
-            v = self.eval(env, ve)
+            tv = self.eval_expr(env, te)
+            iv = self.eval_expr(env, ie)
+            v = self.eval_expr(env, ve)
             if isinstance(tv, list):
                 if self.is_frozen(tv):
                     raise self._frozen_stress("list")
@@ -4530,8 +4530,8 @@ class Interp:
                 self.note(4, "index assignment on non-container ignored")
         elif k == "mem_assign":
             _, te, key, op, ve = s
-            tv = self.eval(env, te)
-            v = self.eval(env, ve)
+            tv = self.eval_expr(env, te)
+            v = self.eval_expr(env, ve)
             if isinstance(tv, ObjInst):
                 cur = tv.fields.get(key)
                 nv = self.binop(op, cur, v) if op else v
@@ -4555,14 +4555,14 @@ class Interp:
         elif k == "if":
             _, branches, els = s
             for cond, body in branches:
-                if truthy(self.eval(env, cond)):
+                if truthy(self.eval_expr(env, cond)):
                     self.exec_block(self.new_scope(env), body)
                     return
             if els is not None:
                 self.exec_block(self.new_scope(env), els)
         elif k == "while":
             _, cond, body = s
-            while truthy(self.eval(env, cond)):
+            while truthy(self.eval_expr(env, cond)):
                 self.tick()
                 try:
                     self.exec_block(self.new_scope(env), body)
@@ -4622,7 +4622,7 @@ class Interp:
                 raise err
         elif k == "for":
             _, name, it, body = s
-            itv = self.eval(env, it)
+            itv = self.eval_expr(env, it)
             items = []
             if isinstance(itv, SeqObj):
                 while True:
@@ -4665,16 +4665,16 @@ class Interp:
                 except Return as r:
                     raise r
         elif k == "return":
-            raise Return(self.eval(env, s[1]))
+            raise Return(self.eval_expr(env, s[1]))
         elif k == "break":
             raise BreakLoop()
         elif k == "continue":
             raise ContinueLoop()
         elif k == "expr":
-            self.eval(env, s[1])  # propagates: stress frames or top-level contain
+            self.eval_expr(env, s[1])  # propagates: stress frames or top-level contain
         elif k == "match":
             _, subj, cases = s
-            sv = self.eval(env, subj)
+            sv = self.eval_expr(env, subj)
             for pat, body in cases:
                 # W02 (match-v2): one binding dict per arm; captures live only
                 # in the arm that hits (mirror of interp.rs Stmt::Match).
@@ -4740,7 +4740,7 @@ class Interp:
                        if isinstance(kk, str) and kk != "__parent__" and not kk.startswith("#")}
             env[mname] = {kk: exports[kk] for kk in sorted(exports)}
         elif k == "raise":
-            msg = self.eval(env, s[2])
+            msg = self.eval_expr(env, s[2])
             raise Stress(s[1] or "unfolded", v_display(msg))
         elif k == "stress":
             _, kind, body, rescue = s
@@ -4807,7 +4807,7 @@ class Interp:
                 self.note(4, f"redefining trait '{t.name}'")
             self.traits[t.name] = t
         elif k == "yield":
-            v = self.eval(env, s[1]) if s[1] is not None else None
+            v = self.eval_expr(env, s[1]) if s[1] is not None else None
             if self.seq_buffer is not None:
                 self.seq_buffer.append(v)
             else:
@@ -4939,7 +4939,7 @@ class Interp:
         self.note(4, f"member '{key}' on {type_name(tv)} is null")
         return None
 
-    def eval(self, env, e):
+    def eval_expr(self, env, e):
         self.tick()
         k = e[0]
         if k == "lit" or k == "null":
@@ -4950,17 +4950,17 @@ class Interp:
                 if pk == "lit":
                     out.append(pv)
                 else:
-                    out.append(v_display(self.eval(env, pv)))
+                    out.append(v_display(self.eval_expr(env, pv)))
             return "".join(out)
         if k == "list":
-            return [self.eval(env, x) for x in e[1]]
+            return [self.eval_expr(env, x) for x in e[1]]
         if k == "map":
             m = {}
             for ke, ve in e[1]:
-                kv = self.eval(env, ke)
+                kv = self.eval_expr(env, ke)
                 # W029 mirror: bytes are scalar keys (Rust key_scalar includes
                 # Bytes), never stringified
-                val = self.eval(env, ve)
+                val = self.eval_expr(env, ve)
                 # #214: container keys key by VALUE (side pair-list), the
                 # Rust MapStore law — no more display-text canonicalization
                 _map_insert_key(m, kv, val)
@@ -4972,7 +4972,7 @@ class Interp:
             self.note(4, f"unbound '{e[1]}' read as null")
             return None
         if k == "un":
-            v = self.eval(env, e[2])
+            v = self.eval_expr(env, e[2])
             if e[1] == "neg":
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
                     if isinstance(v, int) and v == -(2**63):
@@ -4988,14 +4988,14 @@ class Interp:
             return not truthy(v)
         if k == "tern":
             _, cond, a, b = e
-            return self.eval(env, a) if truthy(self.eval(env, cond)) else self.eval(env, b)
+            return self.eval_expr(env, a) if truthy(self.eval_expr(env, cond)) else self.eval_expr(env, b)
         if k == "prop":
             # W06 (D-014) mirror: `e?!`, Some/Ok unwrap to the payload;
             # None/Err unwind to the nearest enclosing gene boundary (the
             # gene RETURNS the variant). Plain values pass through untouched
             # (silent identity, the same contract as `?.` on non-null).
             _, sub, line = e
-            v = self.eval(env, sub)
+            v = self.eval_expr(env, sub)
             if isinstance(v, Variant):
                 if v.tag in ("Some", "Ok"):
                     # null payload is a REAL payload: ok(null) stores Some(Null)
@@ -5014,7 +5014,7 @@ class Interp:
             if p is None:
                 self.note(4, f"phenotype '{name}' not declared; instance is an empty map")
                 return {}
-            args = [self.eval(env, a) for a in args_e]
+            args = [self.eval_expr(env, a) for a in args_e]
             # z-s2-harden (#126.7): the new-site env rides into construction
             # so field initializers evaluate where the instance is born
             return self.construct_obj(p, args, env)
@@ -5022,17 +5022,17 @@ class Interp:
             self.cur_line = e[4] if len(e) > 4 else 0  # W07 mirror: dx-r4 stamp
             op = e[1]
             if op == "and":
-                lv = self.eval(env, e[2])
-                return self.eval(env, e[3]) if truthy(lv) else lv
+                lv = self.eval_expr(env, e[2])
+                return self.eval_expr(env, e[3]) if truthy(lv) else lv
             if op == "or":
-                lv = self.eval(env, e[2])
-                return lv if truthy(lv) else self.eval(env, e[3])
+                lv = self.eval_expr(env, e[2])
+                return lv if truthy(lv) else self.eval_expr(env, e[3])
             if op == "nullish":
                 # L1a: coalesce Null only, falsy non-null passes through
-                lv = self.eval(env, e[2])
-                return self.eval(env, e[3]) if lv is None else lv
-            lv = self.eval(env, e[2])
-            rv = self.eval(env, e[3])
+                lv = self.eval_expr(env, e[2])
+                return self.eval_expr(env, e[3]) if lv is None else lv
+            lv = self.eval_expr(env, e[2])
+            rv = self.eval_expr(env, e[3])
             return self.binop(op, lv, rv)
         if k == "call":
             self.cur_line = e[3] if len(e) > 3 else 0  # W07 mirror: A13 stamp
@@ -5048,17 +5048,17 @@ class Interp:
                 if isinstance(dec, tuple):  # ("redirect", target_name)
                     to = dec[1]
                     tgt = self.lookup(env, to)
-                    argvs = [self.eval(env, a) for a in e[2]]
+                    argvs = [self.eval_expr(env, a) for a in e[2]]
                     return self.call_value(env, tgt, argvs)
-                args = [self.eval(env, a) for a in e[2]]
+                args = [self.eval_expr(env, a) for a in e[2]]
                 return self.call_named(env, e[1][1], args, _risc_pre=True)
-            callee = self.eval(env, e[1])
-            args = [self.eval(env, a) for a in e[2]]
+            callee = self.eval_expr(env, e[1])
+            args = [self.eval_expr(env, a) for a in e[2]]
             return self.call_value(env, callee, args)
         if k == "index":
             self.cur_line = e[3] if len(e) > 3 else 0  # W07 mirror: dx-r4 stamp
-            tv = self.eval(env, e[1])
-            iv = self.eval(env, e[2])
+            tv = self.eval_expr(env, e[1])
+            iv = self.eval_expr(env, e[2])
             if isinstance(tv, list):
                 idx = self.as_index(iv, len(tv))
                 if idx < len(tv):
@@ -5098,23 +5098,23 @@ class Interp:
                 raise Stress("missing", "byte index out of range")
             raise Stress("unfolded", f"cannot index {type_name(tv)}")
         if k == "member":
-            tv = self.eval(env, e[1])
+            tv = self.eval_expr(env, e[1])
             return self.member_value(tv, e[2])
         if k == "member?":
             # L1a: optional chaining, Null receiver is Null, silently
-            tv = self.eval(env, e[1])
+            tv = self.eval_expr(env, e[1])
             if tv is None:
                 return None
             return self.member_value(tv, e[2])
         if k == "method?":
-            tv = self.eval(env, e[1])
+            tv = self.eval_expr(env, e[1])
             if tv is None:
                 return None
-            args = [self.eval(env, a) for a in e[3]]
+            args = [self.eval_expr(env, a) for a in e[3]]
             return self.call_method(env, tv, e[2], args)
         if k == "method":
-            tv = self.eval(env, e[1])
-            args = [self.eval(env, a) for a in e[3]]
+            tv = self.eval_expr(env, e[1])
+            args = [self.eval_expr(env, a) for a in e[3]]
             return self.call_method(env, tv, e[2], args)
         if k == "lambda":
             g = e[1]
@@ -5126,7 +5126,7 @@ class Interp:
             return inst
         if k == "collect":
             _, var, it, filt, body = e
-            itv = self.eval(env, it)
+            itv = self.eval_expr(env, it)
             if isinstance(itv, SeqObj):
                 items = []
                 while True:
@@ -5145,9 +5145,9 @@ class Interp:
                 self.tick()
                 child = self.new_scope(env)
                 child[var] = item
-                if filt is not None and not truthy(self.eval(child, filt)):
+                if filt is not None and not truthy(self.eval_expr(child, filt)):
                     continue
-                out.append(self.eval(child, body))
+                out.append(self.eval_expr(child, body))
             return out
         raise Stress("unfolded", f"unknown expression {k}")
 
@@ -6122,7 +6122,7 @@ class Interp:
                     raise Stress("unfolded", f"argument '{pname}' for gene '{name}' expects {ann_render(anns[i])}, got {type_name(args[i])}")
                 fenv[pname] = args[i]
             elif dflt is not None:
-                dv = self.eval(fenv, dflt)
+                dv = self.eval_expr(fenv, dflt)
                 anns = g.param_anns
                 if i < len(anns) and anns[i] is not None and not ann_is_typaram(anns[i], g.type_params) and not ann_matches(dv, anns[i]):
                     raise Stress("unfolded", f"default of '{pname}' for gene '{name}' expects {ann_render(anns[i])}, got {type_name(dv)}")
@@ -6136,7 +6136,7 @@ class Interp:
             cond, gbody = g.guard
             ok = False
             try:
-                ok = truthy(self.eval(fenv, cond))
+                ok = truthy(self.eval_expr(fenv, cond))
             except Stress:
                 ok = False
             if not ok:
@@ -6220,13 +6220,13 @@ class Interp:
                         raise Stress("unfolded", f"argument '{pname}' for method '{name}' expects {ann_render(anns[i])}, got {type_name(args[i])}")
                     fenv[pname] = args[i]
                 elif dflt is not None:
-                    fenv[pname] = self.eval(fenv, dflt)
+                    fenv[pname] = self.eval_expr(fenv, dflt)
                 else:
                     fenv[pname] = None
             if g.guard is not None:
                 cond, gbody = g.guard
                 try:
-                    ok = truthy(self.eval(fenv, cond))
+                    ok = truthy(self.eval_expr(fenv, cond))
                 except Stress:
                     ok = False
                 if not ok:
@@ -8760,7 +8760,7 @@ class Interp:
             for fname, fexpr in dd.fields:
                 # z-s2-harden (#126.7): field inits evaluate at the new site
                 # (was self.globals — construction-site locals invisible)
-                fields[fname] = self.eval(site_env if site_env is not None else self.globals, fexpr)
+                fields[fname] = self.eval_expr(site_env if site_env is not None else self.globals, fexpr)
         obj = ObjInst(p, fields)
         # W04: trait contract check, required methods must be provided by
         # the lineage; a break is a NOTE (Total Grammar), never fatal.

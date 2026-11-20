@@ -139,7 +139,11 @@ async function api(req: Request, pathname: string): Promise<Response> {
     const body = (await readBody(req)) as Record<string, unknown> | null;
     if (!body) return json({ ok: false, error: "Invalid JSON body." }, 400);
     const current = loadSettings();
-    const next = { ...current, ...body, toolPaths: { ...current.toolPaths, ...((body.toolPaths as object) ?? {}) } };
+    // merge AFTER the nullish check, not inside the spread: `as object`
+    // erases the nullable type and turns `?? {}` into dead code for the
+    // linter while body.toolPaths can still be undefined at runtime
+    const toolPaths = { ...current.toolPaths, ...((body.toolPaths ?? {}) as object) };
+    const next = { ...current, ...body, toolPaths };
     return json({ ok: true, settings: saveSettings(next as Parameters<typeof saveSettings>[0]) });
   }
 

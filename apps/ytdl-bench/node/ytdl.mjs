@@ -9,7 +9,7 @@
 // Concurrency: worker-pool over child_process.execFile promises.
 // ============================================================
 import { execFile } from "node:child_process";
-import { openSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);

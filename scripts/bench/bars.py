@@ -164,6 +164,7 @@ def resolve_bara(explicit=None):
                           "version": bin_version(explicit)}
     machine = "x86_64-unknown-linux-gnu"
     asset = tag = None
+    lookup_error = None
     try:
         headers = {"User-Agent": "operon-bars"}
         tok = os.environ.get("GITHUB_TOKEN")
@@ -179,6 +180,9 @@ def resolve_bara(explicit=None):
                 asset = a["name"]
                 break
     except Exception as e:  # offline: fall through to any cached binary
+        # keep the reason — if the cache is also empty, the final exit message
+        # reports WHY the release lane was unavailable, not just that it was
+        lookup_error = f"{type(e).__name__}: {e}"
         print(f"[bars] release lookup failed ({e}); trying cache", file=sys.stderr)
     if asset and tag:
         tgz = os.path.join(CACHE, asset)
@@ -207,8 +211,9 @@ def resolve_bara(explicit=None):
             return b, {"source": f"release {tag}", "tag": tag, "asset": asset,
                        "tarball_sha256": got, "binary_sha256": sha256(b),
                        "version": bin_version(b)}
-    raise SystemExit("[bars] no Bar A binary available (offline and cache empty); "
-                     "pass --bara PATH")
+    raise SystemExit("[bars] no Bar A binary available (offline and cache empty"
+                     + (f"; release lookup failed: {lookup_error}" if lookup_error else "")
+                     + "); pass --bara PATH")
 
 
 # --------------------------------------------------------------------------

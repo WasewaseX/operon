@@ -80,23 +80,34 @@ def run_prog(prog, args, timeout=300):
         return {"code": 0, "stdout": "", "stderr": ""}
 
 
-def tool_line(prog, flag):
+def probe_tool(prog, flag):
+    """Probe one engine; return (version_line, error). error is None when the
+    engine answered, else a short reason. Keeping the error in the return
+    value (not a bare stderr note) lets every caller decide where a missing
+    engine is surfaced — the probe result is data, not a side effect."""
     try:
         r = run_prog(prog, [flag], timeout=30)
         if r["code"] == 0:
-            return r["stdout"].strip().split("\n")[0]
-        print(f"warning: {prog} {flag} exited {r['code']}", file=sys.stderr)
+            return r["stdout"].strip().split("\n")[0], None
+        return "", f"{prog} {flag} exited {r['code']}"
     except RuntimeError as e:
-        print(f"warning: {prog} unusable: {e}", file=sys.stderr)
-    return ""
+        return "", str(e)
+
+
+def tool_line(prog, flag):
+    return probe_tool(prog, flag)[0]
 
 
 def detect_tools():
-    return {
-        "ytdlp": tool_line("yt-dlp", "--version"),
-        "ffmpeg": tool_line("ffmpeg", "-version"),
-        "aria2": tool_line("aria2c", "--version"),
-    }
+    tools = {}
+    for key, prog, flag in (("ytdlp", "yt-dlp", "--version"),
+                            ("ffmpeg", "ffmpeg", "-version"),
+                            ("aria2", "aria2c", "--version")):
+        line, err = probe_tool(prog, flag)
+        tools[key] = line
+        if err:
+            print(f"warning: {err}", file=sys.stderr)
+    return tools
 
 
 # ---------------------------------------------------------- selection logic
@@ -303,7 +314,7 @@ def get_opts(rest):
         "playlist": flag("playlist"),
         "template": val("template", "%(title)s [%(id)s].%(ext)s"),
         "max_attempts": int(val("max-attempts", 4)),
-        "aria2_ok": bool(tool_line("aria2c", "--version")),
+        "aria2_ok": bool(probe_tool("aria2c", "--version")[0]),
     }
     if o["audio"] and o["audio"] not in AUDIO_KINDS:
         die(f"error: --audio must be one of mp3 m4a opus flac wav (got {o['audio']})")

@@ -126,7 +126,7 @@
 
   function restoreFromHash() {
     var h = location.hash || "";
-    var m = h.match(/^#(z|c)=([A-Za-z0-9_\-]+)$/);
+    var m = h.match(/^#(z|c)=([A-Za-z0-9_-]+)$/);
     if (!m) return false;
     var bytes = unb64url(m[2]);
     if (m[1] === "c") {
@@ -142,7 +142,7 @@
         run();
       });
       return true;
-    } catch (e) { return false; }
+    } catch { return false; }
   }
 
   shareBtn.addEventListener("click", function () {

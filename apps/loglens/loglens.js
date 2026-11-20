@@ -197,7 +197,7 @@ function main() {
   let text;
   try {
     text = require("fs").readFileSync(path, "utf8");
-  } catch (e) {
+  } catch {
     console.log(`loglens: cannot read ${path}`);
     process.exit(2);
   }

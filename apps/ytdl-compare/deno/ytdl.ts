@@ -8,364 +8,35 @@
  *
  * Engines: yt-dlp + ffmpeg from PATH (aria2c optional). Zero npm deps.
  *
+ * The shared decision core (types, formatting, engine probes, selector
+ * logic, format table, download loop, option layer) lives in lib.ts —
+ * split out 2026-11-21 so every file stays under the
+ * complexity/file-too-large 400-line limit.
+ *
  * run: deno run --allow-run --allow-read --allow-write ytdl.ts <cmd> ...
  */
 
-const TIERS = ["2160", "1440", "1080", "720", "480", "360", "240", "144"];
-const AUDIO_KINDS = ["mp3", "m4a", "opus", "flac", "wav"];
-const PARTIAL_SUFFIXES = [".part", ".ytdl", ".aria2", ".tmp"];
-
-interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-interface Opts {
-  url: string;
-  out: string;
-  quality: string;
-  audio: string;
-  fmt: string;
-  subs: boolean;
-  sub_langs: string;
-  jobs: number;
-  aria2: boolean;
-  playlist: boolean;
-  template: string;
-  max_attempts: number;
-  aria2_ok: boolean;
-}
-
-interface Fmt {
-  format_id: string;
-  ext: string;
-  height?: number;
-  width?: number;
-  fps?: number;
-  vcodec?: string;
-  acodec?: string;
-  tbr?: number;
-  filesize?: number;
-  filesize_approx?: number;
-  format_note?: string;
-}
-
-interface Meta {
-  id?: string;
-  title?: string;
-  uploader?: string;
-  duration?: number;
-  view_count?: number;
-  formats?: Fmt[];
-}
-
-// ---------------------------------------------------------- formatting
-
-function fmtBytes(n: number | undefined | null): string {
-  if (n == null) return "?";
-  const f = Number(n);
-  if (f >= 1073741824.0) return `${(f / 1073741824.0).toFixed(2)} GB`;
-  if (f >= 1048576.0) return `${(f / 1048576.0).toFixed(1)} MB`;
-  if (f >= 1024.0) return `${(f / 1024.0).toFixed(1)} KB`;
-  return `${n} B`;
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
-}
-
-function fmtDur(s: number | undefined | null): string {
-  if (s == null) return "?";
-  const t = Math.floor(Number(s));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const sec = t % 60;
-  if (h > 0) return `${h}:${pad2(m)}:${pad2(sec)}`;
-  return `${m}:${pad2(sec)}`;
-}
-
-function comma(n: number | undefined | null): string {
-  if (n == null) return "?";
-  return Math.floor(Number(n)).toLocaleString("en-US");
-}
-
-function mget(m: Record<string, unknown>, k: string): string {
-  const v = m[k];
-  return v == null ? "" : String(v);
-}
-
-function tailLines(s: string, n: number): string {
-  const ls = s.trim().split("\n").filter((l) => l !== "");
-  if (ls.length <= n) return ls.join("\n");
-  return ls.slice(ls.length - n).join("\n");
-}
-
-// ---------------------------------------------------------- engines
-
-async function runProg(prog: string, args: string[], timeoutMs = 300000): Promise<RunResult> {
-  try {
-    const cmd = new Deno.Command(prog, { args, stdout: "piped", stderr: "piped" });
-    const { code, stdout, stderr } = await cmd.output();
-    return {
-      code,
-      stdout: new TextDecoder().decode(stdout),
-      stderr: new TextDecoder().decode(stderr),
-    };
-  } catch (_e) {
-    throw new Error(`run denied — '${prog}' not found or not granted`);
-  }
-}
-
-async function toolLine(prog: string, flag: string): Promise<string> {
-  try {
-    const r = await runProg(prog, [flag], 30000);
-    if (r.code === 0) return r.stdout.trim().split("\n")[0];
-  } catch (_e) {
-    /* not granted / not installed */
-  }
-  return "";
-}
-
-async function detectTools() {
-  return {
-    ytdlp: await toolLine("yt-dlp", "--version"),
-    ffmpeg: await toolLine("ffmpeg", "-version"),
-    aria2: await toolLine("aria2c", "--version"),
-  };
-}
-
-// ---------------------------------------------------------- selection logic
-// must stay IDENTICAL to apps/ytdl/ytdl.op (differential-pinned)
-
-function qualityExpr(q: string): string {
-  if (q === "best") return "bestvideo*+bestaudio/best";
-  return `bestvideo[height<=${q}]+bestaudio/best[height<=${q}]/best`;
-}
-
-function selectionArgs(o: Partial<Opts>): string[] {
-  if (o.fmt) return ["-f", o.fmt];
-  if (o.audio) {
-    return ["-f", "bestaudio/best", "-x", "--audio-format", o.audio, "--audio-quality", "0"];
-  }
-  return ["-f", qualityExpr(o.quality ?? "best")];
-}
-
-function buildGetArgs(url: string, o: Opts): string[] {
-  const a: string[] = [];
-  if (!o.playlist) a.push("--no-playlist");
-  a.push("--continue", "--retries", "3", "--fragment-retries", "3", "--no-overwrites");
-  if (o.aria2 && o.aria2_ok) {
-    a.push("--downloader", "aria2c", "--downloader-args", "aria2c:-x16 -s16 -k1M --file-allocation=none");
-  }
-  if (o.subs) {
-    a.push("--write-subs", "--sub-langs", o.sub_langs, "--convert-subs", "srt");
-  }
-  a.push("-P", o.out, "-o", o.template);
-  a.push(...selectionArgs(o));
-  a.push(url);
-  return a;
-}
-
-// ---------------------------------------------------------- format table
-
-function hOf(f: Fmt): number {
-  return f.height == null ? 0 : f.height;
-}
-
-function tOf(f: Fmt): number {
-  return f.tbr == null ? 0 : f.tbr;
-}
-
-function fmtBefore(a: Fmt, b: Fmt): boolean {
-  if (hOf(a) > hOf(b)) return true;
-  if (hOf(a) < hOf(b)) return false;
-  return tOf(a) > tOf(b);
-}
-
-function resOf(f: Fmt): string {
-  const h = hOf(f);
-  if (h <= 0) return mget(f, "vcodec") === "none" ? "audio" : "?";
-  const w = f.width ?? 0;
-  return w > 0 ? `${w}x${h}` : `?x${h}`;
-}
-
-function sizeOf(f: Fmt): string {
-  if (f.filesize != null) return fmtBytes(f.filesize);
-  if (f.filesize_approx != null) return `~${fmtBytes(f.filesize_approx)}`;
-  return "?";
-}
-
-function clip(s: string, w: number): string {
-  return s.length > w ? s.slice(0, w - 2) + ".." : s;
-}
-
-function fmtRow(f: Fmt): string {
-  const fps = f.fps != null ? String(Math.floor(f.fps)) : "";
-  let vc = mget(f, "vcodec") || "?";
-  if (vc === "none") vc = "-";
-  let ac = mget(f, "acodec") || "?";
-  if (ac === "none") ac = "-";
-  const p = (s: string, w: number, dir: "l" | "r") =>
-    dir === "l" ? clip(s, w).padEnd(w) : clip(s, w).padStart(w);
-  return (
-    p(mget(f, "format_id"), 9, "l") + "  " +
-    p(mget(f, "ext"), 4, "l") + "  " +
-    p(resOf(f), 10, "l") + "  " +
-    p(fps, 4, "r") + "  " +
-    p(sizeOf(f), 9, "r") + "  " +
-    p(`${vc}/${ac}`, 19, "l") + "  " +
-    mget(f, "format_note")
-  );
-}
-
-function tableRows(meta: Meta): string[] {
-  // pure decision pipeline: sort + row-build, NO engine probes — the
-  // workload the deep benchmark times in every language build
-  const out: string[] = [];
-  out.push(`title: ${mget(meta, "title")}`);
-  out.push(
-    `by: ${mget(meta, "uploader")}  |  duration: ${fmtDur(meta.duration)}  |  views: ${comma(meta.view_count)}`,
-  );
-  const n = meta.formats ? meta.formats.length : 0;
-  out.push(`formats: ${n}  (res = WxH, size from yt-dlp, ~ = approximate)`);
-  out.push("id        ext   res         fps      size  vcodec/acodec        note");
-  const fs = (meta.formats ?? []).slice().sort((a, b) => {
-    if (hOf(a) > hOf(b)) return -1;
-    if (hOf(a) < hOf(b)) return 1;
-    return tOf(a) > tOf(b) ? -1 : 1;
-  });
-  for (const f of fs) out.push(fmtRow(f));
-  return out;
-}
-
-function infoLines(meta: Meta): string[] {
-  const out = tableRows(meta);
-  const tools = detectToolsSync();
-  if (tools.aria2) {
-    out.push(`accel: aria2c ${tools.aria2} (multi-connection enabled)`);
-  } else {
-    out.push("accel: aria2c not found — single-connection downloads");
-  }
-  return out;
-}
-
-function detectToolsSync() {
-  // shell-out probe kept synchronous so table paths stay simple
-  const line = (prog: string, flag: string): string => {
-    try {
-      const cmd = new Deno.Command(prog, { args: [flag], stdout: "piped", stderr: "piped" });
-      const { code, stdout } = cmd.outputSync();
-      if (code === 0) return new TextDecoder().decode(stdout).trim().split("\n")[0];
-    } catch (_e) {
-      /* not granted / not installed */
-    }
-    return "";
-  };
-  return {
-    ytdlp: line("yt-dlp", "--version"),
-    ffmpeg: line("ffmpeg", "-version"),
-    aria2: line("aria2c", "--version"),
-  };
-}
-
-// ---------------------------------------------------------- download
-
-function hasPartial(d: string): boolean {
-  try {
-    for (const name of Deno.readDirSync(d)) {
-      if (PARTIAL_SUFFIXES.some((s) => name.name.endsWith(s))) return true;
-    }
-  } catch (_e) {
-    return false;
-  }
-  return false;
-}
-
-function destLines(stdout: string, stderr: string): string[] {
-  const found: string[] = [];
-  for (const src of [stdout, stderr]) {
-    for (const raw of src.split("\n")) {
-      const l = raw.trim();
-      if (
-        l.includes("Destination:") || l.includes("has already been downloaded") ||
-        l.includes("[Merger]") || l.includes("Download complete:") || l.includes("ExtractAudio")
-      ) {
-        found.push(l);
-      }
-    }
-  }
-  return found;
-}
-
-async function download(url: string, o: Opts) {
-  let attempts = 0;
-  let last: RunResult = { code: -1, stdout: "", stderr: "" };
-  while (true) {
-    attempts += 1;
-    last = await runProg("yt-dlp", buildGetArgs(url, o));
-    if (last.code === 0 && !hasPartial(o.out)) break;
-    if (attempts >= o.max_attempts) break;
-  }
-  const ok = last.code === 0 && !hasPartial(o.out);
-  return { ok, attempts, r: last };
-}
-
-function report(d: { ok: boolean; attempts: number; r: RunResult }) {
-  for (const ln of destLines(d.r.stdout, d.r.stderr)) console.log(`  ${ln}`);
-  console.log(`  attempts: ${d.attempts}  result: ${d.ok ? "ok" : "FAIL"}`);
-  if (!d.ok) {
-    console.log(d.r.code !== 0 ? `  yt-dlp exited ${d.r.code}:` : `  incomplete after ${d.attempts} rounds:`);
-    console.log(tailLines(d.r.stderr, 4));
-  }
-}
-
-// ---------------------------------------------------------- option layer
-
-function getOpts(rest: string[]): Opts {
-  function val(name: string, def: string): string {
-    const f = `--${name}`;
-    for (let i = 0; i < rest.length; i++) {
-      if (rest[i] === f) return i + 1 < rest.length ? rest[i + 1] : def;
-      if (rest[i].startsWith(f + "=")) return rest[i].slice(f.length + 1);
-    }
-    return def;
-  }
-  const flag = (name: string) => rest.includes(`--${name}`);
-  const pos: string[] = [];
-  let i = 0;
-  while (i < rest.length) {
-    const a = rest[i];
-    if (a.startsWith("--")) i += a.includes("=") ? 1 : 2;
-    else if (a.startsWith("-")) i += 1;
-    else {
-      pos.push(a);
-      i += 1;
-    }
-  }
-  const o: Opts = {
-    url: pos[0] ?? "",
-    out: val("out", "downloads"),
-    quality: val("quality", "best"),
-    audio: val("audio", ""),
-    fmt: val("format", ""),
-    subs: flag("subs"),
-    sub_langs: val("sub-langs", "en"),
-    jobs: parseInt(val("jobs", "2")),
-    aria2: !flag("no-aria2"),
-    playlist: flag("playlist"),
-    template: val("template", "%(title)s [%(id)s].%(ext)s"),
-    max_attempts: parseInt(val("max-attempts", "4")),
-    aria2_ok: false,
-  };
-  o.aria2_ok = false; // set async in main before get/queue use it
-  return o;
-}
-
-function die(msg: string, code = 2): never {
-  console.log(msg);
-  Deno.exit(code);
-}
+import {
+  AUDIO_KINDS,
+  Meta,
+  Opts,
+  RunResult,
+  TIERS,
+  detectTools,
+  die,
+  download,
+  getOpts,
+  hOf,
+  infoLines,
+  mget,
+  report,
+  runProg,
+  selectionArgs,
+  tableRows,
+  tailLines,
+  tOf,
+  toolLine,
+} from "./lib.ts";
 
 // ---------------------------------------------------------- commands
 
@@ -474,7 +145,7 @@ async function cmdQueue(rest: string[]): Promise<never> {
   Deno.exit(failures > 0 ? 1 : 0);
 }
 
-async function cmdSelfcheck(rest: string[]): Promise<never> {
+function cmdSelfcheck(rest: string[]): never {
   if (!rest.length) die("error: selfcheck needs a fixture .json path");
   const meta = JSON.parse(Deno.readTextFileSync(rest[0])) as Meta;
   for (const q of ["best", ...TIERS]) {
