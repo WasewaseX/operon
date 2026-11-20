@@ -56,6 +56,7 @@ Usage:
 Exit: 0 no findings, 1 findings, 2 setup error.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -496,10 +497,10 @@ def main():
         os.remove(path)
     if os.path.isfile(patch_path) and findings == 0:
         os.remove(patch_path)
-    try:
+    # temp dir may still hold sibling artifacts from a skipped leg; leaving it
+    # behind is harmless, removing it is a nicety
+    with contextlib.suppress(OSError):
         os.rmdir(TMPDIR)
-    except OSError:
-        pass
 
     elapsed = args.time_budget - (deadline - time.time())
     covered = ", ".join(f"{k}:{v}" for k, v in legs.items())

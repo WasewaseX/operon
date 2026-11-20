@@ -61,8 +61,10 @@ def tracked_op_files():
         files = [l for l in out.splitlines() if l.endswith(".op")]
         if files:
             return sorted(f for f in files if os.sep + "redteam" + os.sep not in f)
-    except Exception:
-        pass
+    except Exception as e:
+        # designed fallback: walk the tree when git is absent/failing, but
+        # say so — a silently shrunken corpus would hide scope from the audit
+        print(f"warning: git ls-files unavailable ({e}); walking the tree", file=sys.stderr)
     out = []
     for base in ("tests", "apps"):
         d = os.path.join(ROOT, base)

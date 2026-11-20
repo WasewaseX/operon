@@ -41,12 +41,12 @@ func writeJSON(w http.ResponseWriter, data any, status int) {
 
 func writeOK(w http.ResponseWriter, data any) { writeJSON(w, data, 200) }
 
-func readBody(w http.ResponseWriter, r *http.Request) map[string]any {
+func readBody(r *http.Request) (map[string]any, error) {
         var body map[string]any
-        if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body); err != nil {
-                return nil
+        if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&body); err != nil { // master-ci-ignore-line the error IS returned as the second value (standard Go err pair); needle matches leading nil
+                return nil, err
         }
-        return body
+        return body, nil
 }
 
 func apiError(w http.ResponseWriter, msg string, status int) {
@@ -62,7 +62,11 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
 
         switch {
         case pathname == "/api/tf/probe" && method == "POST":
-                body := readBody(w, r)
+                body, bodyErr := readBody(r)
+                if bodyErr != nil {
+                        apiError(w, "Invalid JSON body.", 400)
+                        return
+                }
                 url, _ := body["url"].(string)
                 if !isSafeURL(url) {
                         apiError(w, "A valid http(s) URL is required.", 400)
@@ -76,7 +80,11 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
                 writeOK(w, map[string]any{"ok": true, "result": result})
 
         case pathname == "/api/tf/download" && method == "POST":
-                body := readBody(w, r)
+                body, bodyErr := readBody(r)
+                if bodyErr != nil {
+                        apiError(w, "Invalid JSON body.", 400)
+                        return
+                }
                 if body == nil {
                         body = map[string]any{}
                 }
@@ -150,7 +158,11 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
                 }
 
         case pathname == "/api/tf/cancel" && method == "POST":
-                body := readBody(w, r)
+                body, bodyErr := readBody(r)
+                if bodyErr != nil {
+                        apiError(w, "Invalid JSON body.", 400)
+                        return
+                }
                 id, _ := body["id"].(string)
                 if id == "" {
                         apiError(w, "id required", 400)
@@ -159,7 +171,11 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
                 writeOK(w, map[string]any{"ok": st.cancelJob(id)})
 
         case pathname == "/api/tf/retry" && method == "POST":
-                body := readBody(w, r)
+                body, bodyErr := readBody(r)
+                if bodyErr != nil {
+                        apiError(w, "Invalid JSON body.", 400)
+                        return
+                }
                 id, _ := body["id"].(string)
                 if id == "" {
                         apiError(w, "id required", 400)
@@ -172,7 +188,11 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
                 }
 
         case pathname == "/api/tf/remove" && method == "POST":
-                body := readBody(w, r)
+                body, bodyErr := readBody(r)
+                if bodyErr != nil {
+                        apiError(w, "Invalid JSON body.", 400)
+                        return
+                }
                 id, _ := body["id"].(string)
                 if id == "" {
                         apiError(w, "id required", 400)
@@ -185,7 +205,11 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
                 writeOK(w, map[string]any{"ok": true, "dir": dir, "files": files})
 
         case pathname == "/api/tf/files" && method == "POST":
-                body := readBody(w, r)
+                body, bodyErr := readBody(r)
+                if bodyErr != nil {
+                        apiError(w, "Invalid JSON body.", 400)
+                        return
+                }
                 if body != nil {
                         action, _ := body["action"].(string)
                         name, _ := body["name"].(string)
@@ -200,8 +224,8 @@ func apiRoute(w http.ResponseWriter, r *http.Request, pathname string) {
                 writeOK(w, map[string]any{"ok": true, "settings": loadSettings()})
 
         case pathname == "/api/tf/settings" && method == "POST":
-                body := readBody(w, r)
-                if body == nil {
+                body, bodyErr := readBody(r)
+                if bodyErr != nil || body == nil {
                         apiError(w, "Invalid JSON body.", 400)
                         return
                 }

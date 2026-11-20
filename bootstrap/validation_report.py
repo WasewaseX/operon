@@ -187,9 +187,11 @@ def run_enforcing_test(binary_cmd, test_file):
                 info["passed"] = j.get("passed")
                 info["failed"] = j.get("failed")
                 info["asserts"] = j.get("asserts")
+                break
             except json.JSONDecodeError:
-                pass
-            break
+                # a { line that is not the proofs doc is just output text;
+                # keep scanning older lines instead of giving up on the file
+                continue
         m = re.match(r"operon test, (\d+) file\(s\), (\d+) proof\(s\): "
                      r"(\d+) passed, (\d+) failed", line)
         if m:

@@ -65,9 +65,10 @@ if (r.output.join("\n").includes("still running") && r.notes.some(n => n.message
 // B4: the generated manifest must exist, carry the core version, and only
 // mark entries verified when they REALLY match the frozen expected output.
 try {
-    const manifestSrc = fs.readFileSync(__dirname + "/examples.data.js", "utf8");
+    // examples.data.js assigns window.PLAYGROUND_* at load; require() runs it
+    // with `window` resolving to the global set below (no eval needed)
     global.window = {};
-    eval(manifestSrc);
+    require(__dirname + "/examples.data.js");
     const examples = global.window.PLAYGROUND_EXAMPLES || [];
     const version = global.window.PLAYGROUND_VERSION || "";
     if (!version || !/^\d+\.\d+\.\d+/.test(version)) {

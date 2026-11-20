@@ -27,6 +27,7 @@ network anywhere. Usage:
   python3 scripts/bench_deep.py [--runs-scale 1.0] [--out apps/ytdl/bench/results.json]
 """
 import argparse
+import contextlib
 import json
 import os
 import platform
@@ -236,13 +237,12 @@ def loc_of(path):
 
 
 def cpu_model():
-    try:
+    # best-effort probe: /proc/cpuinfo is absent on some hosts/containers
+    with contextlib.suppress(OSError):
         with open("/proc/cpuinfo", "r", encoding="utf-8") as fh:
             for ln in fh:
                 if ln.startswith("model name"):
                     return ln.split(":", 1)[1].strip()
-    except OSError:
-        pass
     return platform.processor() or "unknown"
 
 
@@ -286,13 +286,12 @@ def main():
         "static": {},
         "cs_differential": {},
     }
-    try:
+    # best-effort probe: /proc/meminfo is absent on non-Linux hosts
+    with contextlib.suppress(OSError):
         with open("/proc/meminfo", "r", encoding="utf-8") as fh:
             for ln in fh:
                 if ln.startswith("MemTotal"):
                     results["meta"]["mem_kb"] = int(ln.split()[1])
-    except OSError:
-        pass
 
     active = [k for k in IMPLS if IMPLS[k]["runtime"]]
 
@@ -318,8 +317,9 @@ def main():
             rt_real = os.path.realpath(spec["runtime"])
             if os.path.isfile(rt_real):
                 rt = os.stat(rt_real).st_size
-        except OSError:
-            pass
+        except OSError as e:
+            # stat of the raw source stands in when the binary is missing
+            print(f"warning: cannot stat {rt_real}: {e}", file=sys.stderr)
         src = size_of(spec["source"])
         st[impl] = {
             "runtime_bytes": rt,

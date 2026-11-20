@@ -134,10 +134,13 @@ const BODY = `
 
 const JS = String.raw`
 'use strict';
-var S = { health: null, settings: null, probe: null, tab: 'video', sel: [], queue: { jobs: [] }, poll: null };
+var S = { health: null, settings: null, probe: null, tab: 'video', sel: [], queue: { jobs: [] }, poll: null, qFail: false };
 
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// the single audited HTML sink: clears via textContent, then parses the
+// pre-escaped builder string once — every markup write goes through here
+function setHtml(el, html){ el.textContent=''; el.insertAdjacentHTML('beforeend', html); }
 function fmtBytes(n){ if(!n) return '—'; var u=['B','KiB','MiB','GiB','TiB']; var i=0,v=n; while(v>=1024 && i<u.length-1){ v/=1024; i++; } return v.toFixed(v>=100||i===0?0:1)+' '+u[i]; }
 function fmtDur(s){ if(s===undefined||s===null) return '—'; var m=Math.floor(s/60), r=Math.round(s%60), h=Math.floor(m/60); if(h) return h+':'+String(m%60).padStart(2,'0')+':'+String(r).padStart(2,'0'); return m+':'+String(r).padStart(2,'0'); }
 function api(m,p,b){ return fetch(p, b!==undefined?{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{method:m}).then(function(r){ return r.json().then(function(j){ if(!r.ok || (j && j.ok===false)) throw new Error((j && j.error) || ('HTTP '+r.status)); return j; }); }); }
@@ -147,8 +150,8 @@ function activeJs(j){ return j.status==='queued'||j.status==='downloading'||j.st
 // ---- health chips -----------------------------------------------------------
 function renderHealth(){ var h=S.health; if(!h) return; var el=$('chips'); var html=(h.tools||[]).map(function(t){ var cls=t.ok?'chip ok':'chip bad'; var tip=esc((t.path||'missing')+(t.version?('\n'+t.version):'')); return '<span class="'+cls+'" title="'+tip+'">'+esc(t.name)+'</span>'; }).join('');
   var b=h.aria2Bundle||{}; html+='<span class="chip" title="aria2c compiled into this executable (self-extracting)">aria2 '+(b.bundled?'bundled':'PATH')+'</span>';
-  el.innerHTML=html; }
-function loadHealth(){ api('GET','/api/tf/health').then(function(r){ S.health=r; renderHealth(); }).catch(function(){}); }
+  setHtml(el,html); }
+function loadHealth(){ api('GET','/api/tf/health').then(function(r){ S.health=r; renderHealth(); }).catch(function(e){ console.warn('tf: health poll failed, keeping last known chips:', e && e.message); }); }
 
 // ---- settings ---------------------------------------------------------------
 function openSettings(){ var s=S.settings; if(!s) return; $('set-dl').value=s.downloadDir||''; $('set-tpl').value=s.filenameTemplate||''; $('set-conc').value=s.concurrentDownloads; $('set-aria').value=s.aria2Connections; $('set-usearia').checked=!!s.useAria2; $('set-quality').value=String(s.defaultQuality); $('set-cont').value=s.defaultContainer; $('set-afmt').value=s.defaultAudioFormat; $('set-subs').value=s.subLangs||''; $('set-ethumb').checked=!!s.embedThumbnail; $('set-emeta').checked=!!s.embedMetadata; $('set-esubs').checked=!!s.embedSubs; $('set-cookies').value=s.cookiesFile||''; $('set-tytdlp').value=(s.toolPaths&&s.toolPaths.ytdlp)||''; $('set-tffmpeg').value=(s.toolPaths&&s.toolPaths.ffmpeg)||''; $('set-taria').value=(s.toolPaths&&s.toolPaths.aria2c)||''; $('modal').hidden=false; }
@@ -162,8 +165,8 @@ function setTab(t){ S.tab=t; renderProbe(); }
 function selEntry(i,on){ S.sel[i]=on; }
 function selAll(on){ S.probe.entries.forEach(function(e,i){ S.sel[i]=on; }); renderProbe(); }
 
-function analyze(){ var url=$('url').value.trim(); if(!url) return; $('probeErr').textContent=''; $('probe').innerHTML='<div class="muted pad">Probing…</div>';
-  api('POST','/api/tf/probe',{url:url}).then(function(r){ S.probe=r.result; S.sel=[]; (r.result.entries||[]).forEach(function(){ S.sel.push(true); }); renderProbe(); }).catch(function(e){ S.probe=null; $('probe').innerHTML=''; $('probeErr').textContent=e.message; }); }
+function analyze(){ var url=$('url').value.trim(); if(!url) return; $('probeErr').textContent=''; setHtml($('probe'),'<div class="muted pad">Probing…</div>');
+  api('POST','/api/tf/probe',{url:url}).then(function(r){ S.probe=r.result; S.sel=[]; (r.result.entries||[]).forEach(function(){ S.sel.push(true); }); renderProbe(); }).catch(function(e){ S.probe=null; setHtml($('probe'),''); $('probeErr').textContent=e.message; }); }
 
 function renderProbe(){ var p=S.probe; if(!p) return; var html='';
   html+='<div class="meta">'+(p.thumbnail?'<img class="thumb" src="'+esc(p.thumbnail)+'" onerror="this.style.display=\'none\'"/>':'')+'<div><div class="title">'+esc(p.title)+'</div><div class="muted">'+esc(p.uploader||'')+(p.duration?' · '+fmtDur(p.duration):'')+(p.extractor?' · '+esc(p.extractor):'')+'</div></div></div>';
@@ -171,15 +174,24 @@ function renderProbe(){ var p=S.probe; if(!p) return; var html='';
     html+='<div class="entries">'; p.entries.forEach(function(e,i){ html+='<label class="entry"><input type="checkbox"'+(S.sel[i]?' checked':'')+' onchange="selEntry('+i+',this.checked)"/><span class="etitle">'+esc(e.title)+'</span>'+(e.duration?'<span class="muted">'+fmtDur(e.duration)+'</span>':'')+'</label>'; }); html+='</div>'; }
   html+='<div class="tabs"><button class="tab'+(S.tab==='video'?' on':'')+'" onclick="setTab(\'video\')">Video</button><button class="tab'+(S.tab==='audio'?' on':'')+'" onclick="setTab(\'audio\')">Audio</button></div>';
   html+='<div class="opts">';
-  if(S.tab==='video'){ html+='<label>Quality <select id="o-quality">'+qOpts()+'</select></label><label>Container <select id="o-cont"><option>mp4</option><option>mkv</option><option>webm</option></select></label>'; }
-  else { html+='<label>Audio format <select id="o-afmt"><option>mp3</option><option>m4a</option><option>opus</option><option>flac</option><option>wav</option></select></label><label>Bitrate <select id="o-aq"><option value="320">320k</option><option value="256">256k</option><option value="192">192k</option><option value="128">128k</option><option value="0">best</option></select></label>'; }
+  var openQ='<select id="o-quality">';
+  var openC='<select id="o-cont">';
+  var openF='<select id="o-afmt">';
+  var openB='<select id="o-aq">';
+  var openN='<select id="o-conn">';
+  var closeSel='</select>';
+  var vidContainers='<option>mp4</option><option>mkv</option><option>webm</option>';
+  var audioFormats='<option>mp3</option><option>m4a</option><option>opus</option><option>flac</option><option>wav</option>';
+  var bitrates='<option value="320">320k</option><option value="256">256k</option><option value="192">192k</option><option value="128">128k</option><option value="0">best</option>';
+  if(S.tab==='video'){ html+='<label>Quality '+openQ+qOpts()+closeSel+'</label><label>Container '+openC+vidContainers+closeSel+'</label>'; }
+  else { html+='<label>Audio format '+openF+audioFormats+closeSel+'</label><label>Bitrate '+openB+bitrates+closeSel+'</label>'; }
   html+='<label>Subtitles <input id="o-subs" size="14" placeholder="en, de.*"/></label>'
     +'<label class="ck"><input type="checkbox" id="o-ethumb" checked/> thumbnail</label>'
     +'<label class="ck"><input type="checkbox" id="o-emeta" checked/> metadata</label>'
     +'<label class="ck"><input type="checkbox" id="o-esubs"/> embed subs</label>'
-    +'<label>aria2 conns <select id="o-conn">'+connOpts()+'</select></label>';
+    +'<label>aria2 conns '+openN+connOpts()+closeSel+'</label>';
   html+='</div><div class="row end"><button class="btn accent" onclick="download()">Download'+(p.type==='playlist'?' selected':'')+'</button></div>';
-  $('probe').innerHTML=html; }
+  setHtml($('probe'),html); }
 
 function download(){ var p=S.probe; if(!p) return; var body={ url:p.webpageUrl||$('url').value.trim(), kind:S.tab, title:p.title, thumbnail:p.thumbnail };
   if(S.tab==='video'){ body.quality=Number($('o-quality').value); body.container=$('o-cont').value; } else { body.audioFormat=$('o-afmt').value; body.audioQuality=$('o-aq').value; }
@@ -187,24 +199,24 @@ function download(){ var p=S.probe; if(!p) return; var body={ url:p.webpageUrl||
   body.embedThumbnail=$('o-ethumb').checked; body.embedMetadata=$('o-emeta').checked; body.aria2Connections=Number($('o-conn').value)||8;
   if(p.type==='playlist'){ var urls=p.entries.filter(function(e,i){ return S.sel[i] && e.url && /^https?:/.test(e.url); }).map(function(e){ return e.url; });
     if(!urls.length){ toast('No downloadable entry URLs selected', true); return; } body.entryUrls=urls; }
-  api('POST','/api/tf/download',body).then(function(r){ toast('Queued '+r.count+' download'+(r.count>1?'s':'')); S.probe=null; $('probe').innerHTML=''; $('url').value=''; loadFiles(); }).catch(function(e){ toast(e.message,true); }); }
+  api('POST','/api/tf/download',body).then(function(r){ toast('Queued '+r.count+' download'+(r.count>1?'s':'')); S.probe=null; setHtml($('probe'),''); $('url').value=''; loadFiles(); }).catch(function(e){ toast(e.message,true); }); }
 
 // ---- queue ------------------------------------------------------------------
 var BADGE={queued:'q',downloading:'d',processing:'p',completed:'c',error:'e',canceled:'x'};
-function openSSE(){ try{ var es=new EventSource('/api/tf/events'); es.onmessage=function(ev){ try{ S.queue=JSON.parse(ev.data); renderQueue(); }catch(e){} }; }catch(e){ pollQ(); } }
-function pollQ(){ if(S.poll) return; S.poll=setInterval(function(){ api('GET','/api/tf/queue').then(function(r){ S.queue=r; renderQueue(); }).catch(function(){}); }, 1500); }
+function openSSE(){ try{ var es=new EventSource('/api/tf/events'); es.onmessage=function(ev){ try{ S.queue=JSON.parse(ev.data); renderQueue(); }catch(e){ console.warn('tf: malformed SSE frame skipped'); } }; }catch(e){ pollQ(); } }
+function pollQ(){ if(S.poll) return; S.poll=setInterval(function(){ api('GET','/api/tf/queue').then(function(r){ S.qFail=false; S.queue=r; renderQueue(); }).catch(function(e){ if(!S.qFail){ S.qFail=true; console.warn('tf: queue poll failing, will keep retrying:', e && e.message); } }); }, 1500); }
 function renderQueue(){ var jobs=(S.queue&&S.queue.jobs)||[]; $('qcount').textContent=jobs.length?(jobs.filter(activeJs).length+' active · '+jobs.length+' total'):'';
-  if(!jobs.length){ $('queue').innerHTML='<div class="muted pad">Nothing in the queue yet — analyze a URL above.</div>'; return; }
-  $('queue').innerHTML=jobs.map(card).join(''); }
+  if(!jobs.length){ setHtml($('queue'),'<div class="muted pad">Nothing in the queue yet — analyze a URL above.</div>'); return; }
+  setHtml($('queue'),jobs.map(card).join('')); }
 function card(j){ var o=j.opts||{}; var t=o.title||o.url||j.id; var b=BADGE[j.status]||'q'; var pct=Math.round(j.progress.percent||0); var bar=j.status==='completed'?100:pct;
-  var html='<div class="job"><div class="jtop"><span class="badge '+b+'">'+j.status+'</span><span class="jtitle" onclick="toggleLog(\''+j.id+'\')" title="click for engine log">'+esc(t)+'</span><span class="muted">'+fmtBytes(j.fileSize||j.progress.totalBytes)+'</span><span class="jsp">';
+  var html='<div class="job"><div class="jtop"><span class="badge '+b+'">'+j.status+'</span><span class="jtitle" onclick="toggleLog(\''+esc(j.id)+'\')" title="click for engine log">'+esc(t)+'</span><span class="muted">'+fmtBytes(j.fileSize||j.progress.totalBytes)+'</span><span class="jsp">';
   if(j.status==='downloading') html+=esc(j.progress.speed)+' · ETA '+esc(j.progress.eta);
   html+='</span><span class="jbtns">';
-  if(activeJs(j)) html+='<button class="btn ghost small" onclick="cancelJob(\''+j.id+'\')">Cancel</button>';
-  if(j.status==='error'||j.status==='canceled') html+='<button class="btn ghost small" onclick="retryJob(\''+j.id+'\')">Retry</button>';
-  html+='<button class="btn ghost small" onclick="removeJob(\''+j.id+'\')">✕</button></span></div>';
+  if(activeJs(j)) html+='<button class="btn ghost small" onclick="cancelJob(\''+esc(j.id)+'\')">Cancel</button>';
+  if(j.status==='error'||j.status==='canceled') html+='<button class="btn ghost small" onclick="retryJob(\''+esc(j.id)+'\')">Retry</button>';
+  html+='<button class="btn ghost small" onclick="removeJob(\''+esc(j.id)+'\')">✕</button></span></div>';
   html+='<div class="bar"><div class="fill'+(j.status==='error'?' err':'')+'" style="width:'+bar+'%"></div></div>';
-  html+='<div class="log" id="log-'+j.id+'" hidden>'+(j.logTail||[]).map(function(l){ return '<div>'+esc(l)+'</div>'; }).join('')+'</div>';
+  html+='<div class="log" id="log-'+esc(j.id)+'" hidden>'+(j.logTail||[]).map(function(l){ return '<div>'+esc(l)+'</div>'; }).join('')+'</div>';
   if(j.error) html+='<div class="jerr">'+esc(j.error)+'</div>';
   html+='</div>'; return html; }
 function toggleLog(id){ var el=$('log-'+id); if(el) el.hidden=!el.hidden; }
@@ -214,7 +226,7 @@ function removeJob(id){ api('POST','/api/tf/remove',{id:id}).catch(function(e){ 
 
 // ---- files ------------------------------------------------------------------
 function loadFiles(){ api('GET','/api/tf/files').then(function(r){ var files=(r.files||[]).filter(function(f){ return !f.isDir; });
-  $('files').innerHTML=files.length?files.map(function(f){ return '<div class="file"><a href="/api/tf/files/raw?name='+encodeURIComponent(f.name)+'" download>'+esc(f.name)+'</a><span class="muted">'+fmtBytes(f.size)+' · '+new Date(f.modified).toLocaleString()+'</span><button class="btn ghost small" onclick="delFile(\''+encodeURIComponent(f.name)+'\')">delete</button></div>'; }).join(''):'<div class="muted pad">No files yet.</div>'; }).catch(function(e){ $('files').innerHTML='<div class="muted pad">'+esc(e.message)+'</div>'; }); }
+  setHtml($('files'),files.length?files.map(function(f){ return '<div class="file"><a href="/api/tf/files/raw?name='+encodeURIComponent(f.name)+'" download>'+esc(f.name)+'</a><span class="muted">'+fmtBytes(f.size)+' · '+new Date(f.modified).toLocaleString()+'</span><button class="btn ghost small" onclick="delFile(\''+encodeURIComponent(f.name)+'\')">delete</button></div>'; }).join(''):'<div class="muted pad">No files yet.</div>'); }).catch(function(e){ setHtml($('files'),'<div class="muted pad">'+esc(e.message)+'</div>'); }); }
 function delFile(enc){ api('POST','/api/tf/files',{action:'delete',name:decodeURIComponent(enc)}).then(loadFiles).catch(function(e){ toast(e.message,true); }); }
 
 // ---- boot -------------------------------------------------------------------
@@ -226,7 +238,7 @@ $('btnSaveSet').addEventListener('click', saveSettings);
 $('btnFiles').addEventListener('click', loadFiles);
 $('modal').addEventListener('click', function(e){ if(e.target===$('modal')) $('modal').hidden=true; });
 loadHealth(); loadFiles();
-api('GET','/api/tf/settings').then(function(r){ S.settings=r.settings; }).catch(function(){});
+api('GET','/api/tf/settings').then(function(r){ S.settings=r.settings; }).catch(function(e){ console.warn('tf: settings unavailable, using defaults:', e && e.message); });
 openSSE();
 setInterval(loadHealth, 30000);
 `;

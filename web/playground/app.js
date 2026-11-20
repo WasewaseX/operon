@@ -158,7 +158,8 @@ function lex(src, ctx, lineOffset) {
     }
 
     if (c === "@") {
-      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i + 1));
+      const rest = src.slice(i + 1);
+      const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest);
       if (m) { push("mark", m[0]); i += 1 + m[0].length; continue; }
       note(ctx, 4, "skipped stray '@'", line); i++; continue;
     }

@@ -359,8 +359,12 @@ def main():
                                 "exit_code": wrc,
                                 "detail": f"rc!=0 but bytes changed: {before[:12]} -> {after[:12]}",
                             }))
-                except OSError:
-                    pass
+                except OSError as e:
+                    # a write-integrity finding that cannot be persisted is a
+                    # REAL data loss for triage — say so loudly, never drop it
+                    print(f"fuzz warning: could not record write-integrity "
+                          f"finding ({e}); the affected input is NOT in the "
+                          f"corpus", file=sys.stderr)
             if kind in ("crash", "hang"):
                 h = hashlib.sha256(mut).hexdigest()
                 if h in seen_hashes:

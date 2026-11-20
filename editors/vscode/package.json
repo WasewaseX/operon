@@ -8,6 +8,9 @@
   "engines": {
     "vscode": "^1.75.0"
   },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0"
+  },
   "categories": [
     "Debuggers",
     "Programming Languages"

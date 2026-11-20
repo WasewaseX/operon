@@ -16,3 +16,6 @@ super_rs
 
 # V2-S0: standalone native-jit prototype (own workspace/lockfile/target)
 examples/native-jit/target/
+
+# master-ci helper checkout (pinned v2.18.0), installed by scripts/setup_master_ci.sh
+_ci/

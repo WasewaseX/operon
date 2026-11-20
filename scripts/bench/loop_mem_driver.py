@@ -9,6 +9,7 @@ VmHWM at exit. Unified output lines:
 
   LOOPRSS engine=<e> shape=<s> n=<N> outer=<O> time_ms=<t> hwm_kb=<hwm> ... <child extras>
 """
+import contextlib
 import os
 import subprocess
 import sys
@@ -24,13 +25,12 @@ SIZES = [1_000_000, 2_000_000, 4_000_000]
 
 
 def read_hwm(pid):
-    try:
+    # the child may exit (or never start) between fork and this read
+    with contextlib.suppress(FileNotFoundError, ProcessLookupError):
         with open(f"/proc/{pid}/status") as f:
             for line in f:
                 if line.startswith("VmHWM"):
                     return int(line.split()[1])
-    except (FileNotFoundError, ProcessLookupError):
-        pass
     return None
 
 

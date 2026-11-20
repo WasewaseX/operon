@@ -207,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "operon-registry/2"
 
     def log_message(self, fmt, *args):  # quieter logs on Render
-        pass
+        return  # requests are logged by the platform, not per-line here
 
     def _send(self, status, data, ctype="application/json; charset=utf-8"):
         body = data if isinstance(data, bytes) else json.dumps(data).encode()

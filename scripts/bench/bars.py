@@ -33,6 +33,7 @@ Reproducibility half: scripts/bench/bars_check.py re-derives
 docs/perf/BARS.md from the saved JSON.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -253,13 +254,12 @@ def c_time(name, src_name, iters):
 # --------------------------------------------------------------------------
 
 def cpu_model():
-    try:
+    # best-effort probe: /proc/cpuinfo is absent on some hosts/containers
+    with contextlib.suppress(OSError):
         with open("/proc/cpuinfo") as f:
             for line in f:
                 if line.startswith("model name"):
                     return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
     return platform.processor() or "unknown"
 
 

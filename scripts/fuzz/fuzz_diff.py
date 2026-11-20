@@ -24,7 +24,7 @@ Contracts under fuzz, per generated program P:
       9a.1: section headers and the summary: line are the parse surface
       scripts rely on): `check --json` parses to an object with the
       documented key set {file, score, letter, notes, wobbles, fallbacks,
-      phantoms, nmd, findings}; the plain summary line's counters must
+      phantoms, nmd, findings}; the plain-text summary line's counters must
       equal the JSON document (errors == error-severity findings;
       warnings == warning findings + phantoms; repair note(s) == notes);
       the repair section quotes notes/wobbles/fallbacks verbatim and
@@ -49,6 +49,7 @@ Usage:
 Exit: 0 no findings, 1 findings, 2 setup error.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -321,10 +322,10 @@ def main():
 
     if os.path.isfile(path) and findings == 0:
         os.remove(path)
-    try:
+    # temp dir may still hold sibling artifacts from a skipped leg; leaving it
+    # behind is harmless, removing it is a nicety
+    with contextlib.suppress(OSError):
         os.rmdir(TMPDIR)
-    except OSError:
-        pass
 
     elapsed = args.time_budget - (deadline - time.time())
     covered = ", ".join(f"{b}:{s['programs']}" + (

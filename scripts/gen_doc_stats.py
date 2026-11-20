@@ -120,7 +120,7 @@ def proof_files():
             n += 1
     return n
 
-def test_op_files():
+def op_test_files():
     return len(_walk_op_files("tests"))
 
 def cli_subcommands():
@@ -196,7 +196,7 @@ def compute():
         "std_function_count": sum(m["functions"] for m in mods),
         "redteam_files": redteam_files(),
         "proof_files": proof_files(),
-        "test_op_files": test_op_files(),
+        "test_op_files": op_test_files(),
         "proof_totals": ({"files": None, "proofs": None, "asserts": None,
                           "source": "fast-mode skip"} if fast
                          else proof_totals_from_binary()),

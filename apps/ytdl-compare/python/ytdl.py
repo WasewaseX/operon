@@ -85,8 +85,9 @@ def tool_line(prog, flag):
         r = run_prog(prog, [flag], timeout=30)
         if r["code"] == 0:
             return r["stdout"].strip().split("\n")[0]
-    except RuntimeError:
-        pass
+        print(f"warning: {prog} {flag} exited {r['code']}", file=sys.stderr)
+    except RuntimeError as e:
+        print(f"warning: {prog} unusable: {e}", file=sys.stderr)
     return ""
 
 
@@ -520,26 +521,37 @@ def cmd_bench_lines(rest):
 def cmd_bench_spawn(rest):
     n = int(bench_arg(rest, "n", 30))
     ok = 0
+    spawn_errs = []
     for _ in range(n):
         try:
             r = run_prog("mockspawn", ["--version"], timeout=30)
             if r["code"] == 0:
                 ok += 1
-        except RuntimeError:
-            pass
+            else:
+                spawn_errs.append(f"exit {r['code']}")
+        except RuntimeError as e:
+            spawn_errs.append(str(e))
+    if spawn_errs:
+        print(f"bench-spawn failures ({len(spawn_errs)}): " + "; ".join(spawn_errs[:5]), file=sys.stderr)
     print(f"bench-spawn cs={ok}/{n}")
     sys.exit(0 if ok == n else 1)
 
 
 def bench_queue_worker(chunk):
     ok = 0
+    queue_errs = 0
     for _u in chunk:
         try:
             r = run_prog("mocksleep", ["80"], timeout=30)
             if r["code"] == 0:
                 ok += 1
-        except RuntimeError:
-            pass
+            else:
+                queue_errs += 1
+        except RuntimeError as e:
+            print(f"warning: queue worker run failed: {e}", file=sys.stderr)
+            queue_errs += 1
+    if queue_errs:
+        print(f"bench-queue worker: {queue_errs} failed run(s)", file=sys.stderr)
     return ok
 
 

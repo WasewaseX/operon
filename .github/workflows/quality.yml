@@ -1,0 +1,51 @@
+# master-ci quality gate (WasewaseX/master-ci, pinned by commit SHA to the
+# 2026-11-20 latest main, the same engine the local _ci checkout and the
+# .quality-baseline.json floor were recorded with). Complements operon-ci:
+# this workflow owns the AI-integrity scanner, CodeQL, and the per-check
+# quality ratchet that makes the slop classes fixed in the 2026-11-21
+# cleanup permanent regressions if they ever reappear.
+#
+# The ratchet contract (.quality-baseline.json, schema v2): per-project
+# per-check finding COUNTS are floors. swallowed-exception, eval-usage,
+# go-ignored-error, empty-catch, innerhtml, sql-injection, phantom-import and
+# friends are all at floor 0 — a single new one fails the run. The only
+# tolerated debt is boilerplate-duplication = 3 in the Rust core (identical
+# interpreter value-construction lines; mechanical helpers are planned but
+# MUST land with a cargo-run verification, which the CI runner has and this
+# baseline records). Paying that debt: re-record the floor with
+#   python3 ai_slop_detector.py --write-quality-baseline . --require-parsers
+# in the same PR, review the floor diff, land.
+#
+# ai_slop_max_score 12 = the audited blocking score (3 x weight 4). Any NEW
+# blocking finding pushes the score past 12 and fails this job in addition to
+# the ratchet. Lower the cap as debt is paid.
+
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  master:
+    uses: WasewaseX/master-ci/.github/workflows/master-ci.yml@5e70bfea253800e9541bda5fe6dbb817fad9663e # latest main 2026-11-20 (SHA-pinned, engine == baseline engine)
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    with:
+      profile: standard
+      ai_slop_max_score: 12
+      ratchet: true
+      ratchet_file: .quality-baseline.json
+
+  codeql:
+    uses: WasewaseX/master-ci/.github/workflows/codeql.yml@5e70bfea253800e9541bda5fe6dbb817fad9663e # latest main 2026-11-20
+    permissions:
+      contents: read
+      security-events: write

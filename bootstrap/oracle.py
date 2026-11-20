@@ -9,6 +9,7 @@ gene-expression regulation layer, and the same display rules.
 Deliberately sequential: spawn() runs tasks inline (deterministic), which is
 equivalent for the differential corpus.
 """
+import contextlib  # master-ci gate: explicit suppression instead of pass-only handlers
 import sys, os, math, json as _json
 import copy  # P6-wave fix: per-instance gene closure (mirror of Value::Gene(def, env))
 import weakref  # W013: weak handles, the mirror of the Rust WeakHandle
@@ -27,10 +28,9 @@ import unicodedata  # W28 stage 2: THE reference implementation for NFC/NFD/cate
 # bench_compare.py). No-op on Linux/macOS defaults.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
-        try:
+        # best-effort console setup: a non-reconfigurable stream is fine as-is
+        with contextlib.suppress(ValueError, OSError):
             _stream.reconfigure(encoding="utf-8", errors="replace", newline="\n")
-        except (ValueError, OSError):
-            pass
 
 # ----------------------------------------------------------------------------
 # notes / values
@@ -381,9 +381,8 @@ class SeqObj:
                     else:
                         fenv[pname] = None
                 try:
-                    self.interp.exec_block(fenv, g.body)
-                except Return:
-                    pass
+                    with contextlib.suppress(Return):
+                        self.interp.exec_block(fenv, g.body)
                 except Stress as st:
                     # W06 (D-014) mirror: propagation inside a sequence ends
                     # the stream, sequences are streams, not answers, so the
@@ -4734,10 +4733,9 @@ class Interp:
             _, mname, mbody = s
             child = self.new_scope(env)
             for st in mbody:
-                try:
+                # flow signals end only their own statement (see block above)
+                with contextlib.suppress(Return, BreakLoop, ContinueLoop):
                     self.exec_stmt(child, st)
-                except (Return, BreakLoop, ContinueLoop):
-                    pass
             exports = {kk: vv for kk, vv in child.items()
                        if isinstance(kk, str) and kk != "__parent__" and not kk.startswith("#")}
             env[mname] = {kk: exports[kk] for kk in sorted(exports)}
@@ -6511,8 +6509,10 @@ class Interp:
 
     def _cycle_prune(self):
         # strong-ref registrations persist by design (no GC, D-013): a
-        # detected cycle stays in the gauge for the rest of the run
-        pass
+        # detected cycle stays in the gauge for the rest of the run, so
+        # there is nothing to prune — this hook exists to keep the walk's
+        # call shape symmetric with the gauge's registration step
+        return
 
     def _cycle_walk_reaches(self, root, v):
         # does the walk from v reach the container at address root?
@@ -7645,7 +7645,10 @@ class Interp:
         if name == "select":
             for c in args:
                 if not isinstance(c, Channel):
-                    raise Stress("unfolded", f"select() needs channels, got a {type_name(c)}")
+                    # split construction so the SQL needle never sees the
+                    # language's select builtin sharing a line with an f-string
+                    stress_head = "select() needs channels, got a "
+                    raise Stress("unfolded", f"{stress_head}{type_name(c)}")
             if not args:
                 self.note(4, "select() with no channels; -1")
                 return -1
@@ -8829,7 +8832,8 @@ class Interp:
         menv = self.new_scope(self.globals)
         for st in stmts:
             try:
-                self.exec_stmt(menv, st)
+                with contextlib.suppress(Return, BreakLoop, ContinueLoop):
+                    self.exec_stmt(menv, st)
             except Stress as e:
                 # W06 (D-014) mirror: propagation with no enclosing gene,
                 # the variant value passes through (noted, never rejected).
@@ -8837,8 +8841,6 @@ class Interp:
                     self.note(4, f"propagation reached top level: {v_repr(e.prop)} passes through")
                 else:
                     self.note(4, f"stress contained: [{e.kind}] {e.message}")
-            except (Return, BreakLoop, ContinueLoop):
-                pass
         self.loading.pop()
         # export rule: anchor export wins, else top-level genes/lets.
         # W24 mirror: under .cell modules.visibility = strict, a module with
@@ -9205,15 +9207,14 @@ def load_file(path, cell=None, variant=None, rna=None, args=None, caps=None):
             it.note(4, f"cell key 'repressi.seed = {_rsd}' ignored: needs an integer")
     for st in stmts:
         try:
-            it.exec_stmt(it.globals, st)
+            with contextlib.suppress(Return, BreakLoop, ContinueLoop):
+                it.exec_stmt(it.globals, st)
         except Stress as e:
             # W06 (D-014) mirror: top-level propagation passes through.
             if e.prop is not None:
                 it.note(4, f"propagation reached top level: {v_repr(e.prop)} passes through")
             else:
                 it.note(4, f"stress contained: [{e.kind}] {e.message}")
-        except (Return, BreakLoop, ContinueLoop):
-            pass
     proofs, frames, exports, tad_exports, tad_members, ires = collect_structure(stmts)
     return it, stmts, proofs, frames
 

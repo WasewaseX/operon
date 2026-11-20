@@ -22,6 +22,7 @@ Honesty notes:
     (e.g. strings.op's template-replace idiom), not a re-interpretation.
 """
 import argparse
+import contextlib
 import json
 import os
 import platform
@@ -296,13 +297,12 @@ def run_oracle(path, iters, extra=None):
     return time_cmd(cmd, ROOT, iters)
 
 def cpu_model():
-    try:
+    # best-effort probe: /proc/cpuinfo is absent on some hosts/containers
+    with contextlib.suppress(OSError):
         with open("/proc/cpuinfo") as f:
             for line in f:
                 if line.startswith("model name"):
                     return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
     return platform.processor() or "unknown"
 
 def meta(iters):

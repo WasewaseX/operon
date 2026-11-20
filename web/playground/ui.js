@@ -3,6 +3,8 @@
 // manifest), share-via-URL (gzip+base64url in the hash), version banner
 // matching the core (Cargo.toml), and diagnostics rendering in the same
 // "[tag] file:line: message" shape the native toolchain prints.
+
+/* global runProgram */ // provided by app.js, loaded before this file
 (function () {
   var src = document.getElementById("src");
   var runBtn = document.getElementById("run");
@@ -52,7 +54,7 @@
   function run() {
     var r = runProgram(src.value);
     out.textContent = r.output.join("\n") || "(no output)";
-    notes.innerHTML = "";
+    notes.replaceChildren();
     (r.notes || []).forEach(function (n) {
       var li = document.createElement("li");
       li.className = "note note-r" + n.rung;
