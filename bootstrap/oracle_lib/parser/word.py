@@ -522,9 +522,7 @@ class PWord:
 
     def _ws_regulate(self, ):
         self.next()
-        edges = []
-        trans = []
-        binds = []
+        edges, trans, binds = [], [], []
         if self.peek() == ("SYM", "{", self.peek()[2]):
             self.next()
             while True:
@@ -600,6 +598,10 @@ class PWord:
                 if inhibit is None:
                     self.note(t[2], 4, "regulate edge missing 'activates'/'inhibits'/'translates'; edge dropped")
                     self.skip_line(); continue
+                self._ws_regulate_edge(frm, t, edges, inhibit, attenuating)
+        return ("regulate", edges, trans, binds)
+
+    def _ws_regulate_edge(self, frm, t, edges, inhibit, attenuating):
                 to = self.ident()
                 strength = 1.0
                 if self.expect_kw("strength"):
@@ -665,7 +667,7 @@ class PWord:
                     is_sum = False
                 edges.append((frm, to, strength, inhibit, threshold, hill, is_any, occupy, is_sum, attenuating))
                 self.end_stmt()
-        return ("regulate", edges, trans, binds)
+
 
     def _ws_ligand(self, ):
         # reg-bio-2 (A4): `ligand iptg;`, a small-molecule pool
@@ -770,6 +772,11 @@ class PWord:
         # Canonical order: alpha, gamma, hill, basal, noise, seed.
         ov = {"alpha": None, "gamma": None, "hill": None, "basal": None,
               "noise": None, "seed": None}
+        self._ws_repressi_opts(ov)
+        self.end_stmt()
+        return ("repressilator", [r for r in ring if r], period, ov)
+
+    def _ws_repressi_opts(self, ov):
         while True:
             if self.expect_kw("alpha"):
                 t = self.peek()
@@ -836,8 +843,7 @@ class PWord:
                     self.note(t[2], 4, "seed needs an integer; ignored")
             else:
                 break
-        self.end_stmt()
-        return ("repressilator", [r for r in ring if r], period, ov)
+
 
     def _ws_frame(self, ):
         self.next()
@@ -994,6 +1000,10 @@ class PWord:
                     continue
                 break
         fields, methods = [], []
+        self._ws_pheno_body(fields, methods)
+        return ("pheno", Pheno(name, parent, fields, methods, implements))
+
+    def _ws_pheno_body(self, fields, methods):
         if self.peek() == ("SYM", "{", self.peek()[2]):
             self.next()
             while True:
@@ -1037,7 +1047,7 @@ class PWord:
                 self.next()
                 if self.pos == before:
                     break
-        return ("pheno", Pheno(name, parent, fields, methods, implements))
+
 
     def _ws_sequence(self, ):
         self.next()
