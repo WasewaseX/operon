@@ -20,7 +20,6 @@ and the pattern-wildcard message omitted the offending token text
      tools::flush_notes
 Run once from the repo root; idempotence is verified by the git diff.
 """
-import re
 
 PATH = "bootstrap/oracle.py"
 s = open(PATH).read()

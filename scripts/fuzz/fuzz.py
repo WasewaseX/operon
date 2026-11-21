@@ -322,7 +322,6 @@ def main():
             if execs % 4 == 0:
                 finding_row = None
                 try:
-                    import shutil
                     with open(WRITETMP, "wb") as wfh:
                         wfh.write(mut)
                     before = hashlib.sha256(mut).hexdigest()

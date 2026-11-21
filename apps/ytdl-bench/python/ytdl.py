@@ -8,8 +8,6 @@
 # Engines from PATH: yt-dlp, ffmpeg, ffprobe (aria2c optional).
 # ============================================================
 import json
-import os
-import shutil
 import subprocess
 import sys
 import time

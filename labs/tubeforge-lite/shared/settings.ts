@@ -74,7 +74,3 @@ export function saveSettings(next: Settings): Settings {
   return clean;
 }
 
-/** For test isolation / runtime switches. */
-export function resetSettingsCache(): void {
-  cache = null;
-}

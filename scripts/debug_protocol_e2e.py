@@ -13,10 +13,8 @@ drives `operon debug --protocol=json` end to end. Contract under test:
 """
 import json
 import subprocess
-import sys
 import tempfile
 import os
-import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OP = os.path.join(REPO, "bin", "operon")

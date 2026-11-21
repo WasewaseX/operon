@@ -32,4 +32,3 @@ export async function healthReport(runtime = "node"): Promise<HealthReport> {
   };
 }
 
-export const runtimeName = () => `node ${proc.versions?.node ?? "?"}`;

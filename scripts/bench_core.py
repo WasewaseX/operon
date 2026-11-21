@@ -16,16 +16,6 @@ def build(rev, out):
     subprocess.run(["git", "stash", "create", rev], check=False, capture_output=True)
     return out
 
-def timeit(cmd, n):
-    ts = []
-    out = None
-    for _ in range(n):
-        t0 = time.perf_counter()
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        ts.append((time.perf_counter() - t0) * 1000)
-        out = r.stdout.strip()
-    return ts, out
-
 def interleaved(cmd_a, cmd_b, n):
     a, b = [], []
     for _ in range(n):

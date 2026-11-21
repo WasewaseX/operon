@@ -125,11 +125,6 @@ function runOperon(bin: string, args: string[]): { ok: boolean; out: string; err
 
 let cache: PolicyState | null = null;
 
-/** Re-read the policy from disk on the next loadPolicy(). */
-export function reloadPolicy(): PolicyState {
-  cache = null;
-  return loadPolicy();
-}
 
 export function loadPolicy(): PolicyState {
   if (cache) return cache;

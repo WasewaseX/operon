@@ -1,6 +1,5 @@
 // smoke.js — playground interpreter verification (run: node smoke.js)
 const { runProgram } = require("./app.js");
-const fs = require("fs");
 
 let failures = 0;
 function check(name, src, expectOut, minScore) {

@@ -21,7 +21,6 @@ Usage:
   python3 scripts/gen_playground_examples.py --report   # print verification table
 """
 import argparse
-import base64
 import json
 import pathlib
 import re

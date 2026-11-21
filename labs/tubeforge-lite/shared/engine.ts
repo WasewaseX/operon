@@ -4,7 +4,7 @@
 import {
   resolveTool, spawnDetached, killTree, ensureDir, fileSizeOf,
   join, basename, existsSync, readFileSync, writeFileSync, mkdirSync,
-  defaultDataDir, randomUUID, proc,
+  defaultDataDir, randomUUID,
 } from "./platform.ts";
 import { loadSettings } from "./settings.ts";
 import { buildDownloadArgs, parseProgressLine, DONE_PREFIX, ytdlpBin, humanizeError } from "./ytdlp.ts";

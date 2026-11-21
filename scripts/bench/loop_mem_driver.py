@@ -11,7 +11,6 @@ VmHWM at exit. Unified output lines:
 """
 import contextlib
 import os
-import subprocess
 import sys
 import time
 

@@ -154,14 +154,6 @@ def t_of(f):
     return 0 if t is None else t
 
 
-def fmt_before(a, b):
-    if h_of(a) > h_of(b):
-        return True
-    if h_of(a) < h_of(b):
-        return False
-    return t_of(a) > t_of(b)
-
-
 def res_of(f):
     h = h_of(f)
     if h <= 0:
