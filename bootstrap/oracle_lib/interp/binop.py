@@ -173,42 +173,12 @@ class IBinop:
                 return out
             # Z-NOTEPARITY-1: rust Pow's fallback is as_floats too
             raise Stress("unfolded", f"numeric op needs numbers, found {type_name(l)} and {type_name(r)}")
-        if op in ("&", "|", "^", "<<", ">>"):
-            def as_i(x):
-                if isinstance(x, bool):
-                    return int(x)
-                if isinstance(x, int):
-                    return x
-                raise Stress("unfolded", f"bitwise op needs ints, found {type_name(x)}")
-            a, b = as_i(l), as_i(r)
-            if op == "&": return a & b
-            if op == "|": return a | b
-            if op == "^": return a ^ b
-            if b < 0 or b > 63:
-                raise Stress("overflow", f"shift amount {b} out of range")
-            if op == "<<":
-                val = a << b
-                # mirror the release-build i64 wrap (two's complement)
-                val &= (1 << 64) - 1
-                if val >= 2**63:
-                    val -= 2**64
-                return val
-            return a >> b
+        if op in ("&", "|", "^", "<<", ">>"): return self._bo_b1(l, op, r)
         if op == "==":
             return deep_eq(l, r)
         if op == "!=":
             return not deep_eq(l, r)
-        if op in ("<", "<=", ">", ">="):
-            if isinstance(l, str) and isinstance(r, str):
-                pass
-            elif isinstance(l, (int, float)) and isinstance(r, (int, float)):
-                pass
-            else:
-                raise Stress("unfolded", f"cannot order {type_name(l)} and {type_name(r)}")
-            if op == "<": return l < r
-            if op == "<=": return l <= r
-            if op == ">": return l > r
-            return l >= r
+        if op in ("<", "<=", ">", ">="): return self._bo_b2(l, op, r)
         if op == "in":
             if isinstance(r, list):
                 return any(deep_eq(l, x) for x in r)
@@ -218,3 +188,38 @@ class IBinop:
                 return _map_has(r, l)
             raise Stress("unfolded", f"'in' not defined for {type_name(r)}")
         raise Stress("unfolded", f"unknown op {op}")
+
+    def _bo_b1(self, l, op, r):
+        def as_i(x):
+            if isinstance(x, bool):
+                return int(x)
+            if isinstance(x, int):
+                return x
+            raise Stress("unfolded", f"bitwise op needs ints, found {type_name(x)}")
+        a, b = as_i(l), as_i(r)
+        if op == "&": return a & b
+        if op == "|": return a | b
+        if op == "^": return a ^ b
+        if b < 0 or b > 63:
+            raise Stress("overflow", f"shift amount {b} out of range")
+        if op == "<<":
+            val = a << b
+            # mirror the release-build i64 wrap (two's complement)
+            val &= (1 << 64) - 1
+            if val >= 2**63:
+                val -= 2**64
+            return val
+        return a >> b
+
+    def _bo_b2(self, l, op, r):
+        if isinstance(l, str) and isinstance(r, str):
+            pass
+        elif isinstance(l, (int, float)) and isinstance(r, (int, float)):
+            pass
+        else:
+            raise Stress("unfolded", f"cannot order {type_name(l)} and {type_name(r)}")
+        if op == "<": return l < r
+        if op == "<=": return l <= r
+        if op == ">": return l > r
+        return l >= r
+
